@@ -1,30 +1,52 @@
 {{define "content"}}
 <div class="glass-panel">
-    <div id="status-container" class="status-container" style="display: none;">
-        <h2 style="margin-bottom: 1rem; font-size: 1.2rem;">Hashing in Progress</h2>
+    <div id="status-container" class="status-container" style="display: none">
+        <h2 style="margin-bottom: 1rem; font-size: 1.2rem">
+            Hashing in progress
+        </h2>
         <div class="progress-container">
-            <div id="progress-bar" class="progress-bar" style="width: 100%; animation: pulse 1s infinite;"></div>
+            <div
+                id="progress-bar"
+                class="progress-bar"
+                style="width: 100%; animation: pulse 1s infinite"
+            ></div>
         </div>
-        <div id="status-text" class="status-text pulsing">Processing files...</div>
+        <div id="status-text" class="status-text pulsing">
+            Processing files...
+        </div>
     </div>
-    
-    <div id="init-container" style="text-align: center;">
-        <p style="margin-bottom: 2rem; color: var(--text-secondary);">Start a new case to begin the hashing process.</p>
-        <button id="start-btn" style="background: var(--accent-color); color: white; border: none; padding: 0.75rem 2rem; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+
+    <div id="init-container" style="text-align: center">
+        <p style="margin-bottom: 2rem; color: var(--text-secondary)">
+            Start a new case to begin the hashing process.
+        </p>
+        <button
+            id="start-btn"
+            style="
+                background: var(--accent-color);
+                color: white;
+                border: none;
+                padding: 0.75rem 2rem;
+                border-radius: 8px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: background 0.2s;
+            "
+        >
             Start New Case
         </button>
     </div>
 </div>
 
 <script>
-    document.getElementById('start-btn').addEventListener('click', () => {
-        document.getElementById('init-container').style.display = 'none';
-        document.getElementById('status-container').style.display = 'block';
-        
+    document.getElementById("start-btn").addEventListener("click", () => {
+        document.getElementById("init-container").style.display = "none";
+        document.getElementById("status-container").style.display = "block";
+
         // Trigger backend start
         fetch("/api/start", { method: "POST" })
-            .then(res => res.json())
-            .then(data => {
+            .then((res) => res.json())
+            .then((data) => {
                 if (data.status === "started") {
                     connectSSE();
                 } else {
@@ -35,24 +57,26 @@
 
     function connectSSE() {
         const evtSource = new EventSource("/api/progress");
-        
-        evtSource.onmessage = function(event) {
+
+        evtSource.onmessage = function (event) {
             const data = JSON.parse(event.data);
             const count = data.processed;
-            
-            document.getElementById('status-text').innerText = `Processed files... (${count})`;
-            document.getElementById('status-text').classList.remove('pulsing');
-            
+
+            document.getElementById("status-text").innerText =
+                `Processed files... (${count})`;
+            document.getElementById("status-text").classList.remove("pulsing");
+
             if (data.done) {
                 evtSource.close();
-                document.getElementById('status-text').innerText = `Completed! Total artifacts: ${count}`;
-                const pBar = document.getElementById('progress-bar');
-                pBar.style.animation = 'none';
-                pBar.style.background = 'var(--success-color)';
+                document.getElementById("status-text").innerText =
+                    `Completed! Total artifacts: ${count}`;
+                const pBar = document.getElementById("progress-bar");
+                pBar.style.animation = "none";
+                pBar.style.background = "var(--success-color)";
             }
         };
-        
-        evtSource.onerror = function(err) {
+
+        evtSource.onerror = function (err) {
             console.error("EventSource failed:", err);
             evtSource.close();
         };
