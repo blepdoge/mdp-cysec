@@ -17,30 +17,30 @@
     </div>
 
     <div id="init-container">
-        <h2 style="text-align: center; margin-bottom: 2rem; font-size: 1.5rem; color: var(--text-primary);">Welcome to Evidence Integrity Manager</h2>
+        <h2 style="text-align: center; margin-bottom: 2rem; font-size: 1.5rem; color: var(--text-primary);">Welcome to Evidence integrity manager</h2>
         
         <div class="choice-grid">
             <!-- Choice 1: Start New Case -->
             <div class="choice-card" id="start-new-card">
                 <div class="choice-icon">📁</div>
-                <h3>Start a New Case</h3>
+                <h3>Start a new case</h3>
                 <p>Hash and verify a raw evidence directory on your local disk from scratch.</p>
-                <button id="browse-btn" class="btn" style="margin-top: 1rem;">Browse Local Files</button>
+                <button id="browse-btn" class="btn" style="margin-top: 1rem;">Browse local files</button>
             </div>
             
             <!-- Choice 2: Import Existing Case -->
             <div class="choice-card" style="opacity: 0.6; cursor: not-allowed;">
                 <div class="choice-icon">📥</div>
-                <h3>Import Existing Case</h3>
+                <h3>Import existing case</h3>
                 <p>Load an existing master manifest JSON to review a previously hashed case.</p>
-                <button class="btn btn-secondary" style="margin-top: 1rem;" disabled>Coming Soon</button>
+                <button class="btn btn-secondary" style="margin-top: 1rem;" disabled>Coming soon</button>
             </div>
         </div>
     </div>
 
     <!-- File Explorer UI -->
     <div id="explorer-container" style="display: none;">
-        <h2 style="margin-bottom: 1rem; font-size: 1.2rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">Select Evidence Directory</h2>
+        <h2 style="margin-bottom: 1rem; font-size: 1.2rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">Select evidence directory</h2>
         <div style="margin-bottom: 1rem; font-family: monospace; color: var(--accent-color); background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 4px;" id="current-dir"></div>
         
         <div id="folder-list" class="folder-list">
@@ -49,7 +49,7 @@
 
         <div style="margin-top: 1.5rem; display: flex; justify-content: space-between;">
             <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
-            <button id="confirm-btn" class="btn">Hash this Directory</button>
+            <button id="confirm-btn" class="btn">Hash this directory</button>
         </div>
     </div>
 </div>

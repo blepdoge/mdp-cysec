@@ -2,19 +2,19 @@
 <div class="glass-panel">
     <!-- Dashboard Header -->
     <div class="dashboard-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1.5rem; margin-bottom: 1.5rem;">
-        <h2 style="font-size: 1.5rem; color: var(--accent-color); margin-bottom: 0.5rem;">Case Dashboard</h2>
+        <h2 style="font-size: 1.5rem; color: var(--accent-color); margin-bottom: 0.5rem;">Case dashboard</h2>
         
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
             <div class="stat-card">
-                <span class="stat-label">Total Artifacts</span>
+                <span class="stat-label">Total artifacts</span>
                 <span class="stat-value">{{.Manifest.CaseMetadata.TotalArtifacts}}</span>
             </div>
             <div class="stat-card">
-                <span class="stat-label">Master Root Hash</span>
+                <span class="stat-label">Master root hash</span>
                 <span class="stat-value" style="font-size: 0.8rem; word-break: break-all;">{{.Manifest.CaseMetadata.CaseRootHash}}</span>
             </div>
             <div class="stat-card">
-                <span class="stat-label">Generation Time</span>
+                <span class="stat-label">Generation time</span>
                 <span class="stat-value" style="font-size: 0.9rem;">{{.Manifest.CaseMetadata.CreationTimestamp}}</span>
             </div>
         </div>
@@ -23,7 +23,7 @@
     <!-- Explorer -->
     <div class="artifact-explorer">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <h3 style="font-size: 1.2rem;">Artifact Explorer</h3>
+            <h3 style="font-size: 1.2rem;">Artifact explorer</h3>
             <input type="text" id="search-input" placeholder="Search by name, path, or hash..." style="padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; width: 300px;">
         </div>
 

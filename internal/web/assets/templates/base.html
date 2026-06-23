@@ -13,11 +13,15 @@
     <body>
         <div class="container">
             <header class="header">
-                <h1>Evidence integrity manager</h1>
-                <p>Secure, cryptographic verification of forensic exhibits</p>
-            </header>
+            <h1>Evidence integrity manager</h1>
+            <p>Secure, cryptographic verification of forensic exhibits</p>
+        </header>
 
-            {{template "content" .}}
-        </div>
-    </body>
+        {{if eq .Page "dashboard"}}
+            {{template "dashboard_content" .}}
+        {{else}}
+            {{template "index_content" .}}
+        {{end}}
+    </div>
+</body>
 </html>
