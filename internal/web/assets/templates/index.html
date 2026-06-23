@@ -1,4 +1,4 @@
-{{define "content"}}
+{{define "index_content"}}
 <div class="glass-panel">
     <div id="status-container" class="status-container" style="display: none">
         <h2 style="margin-bottom: 1rem; font-size: 1.2rem">
@@ -16,9 +16,26 @@
         </div>
     </div>
 
-    <div id="init-container" style="text-align: center;">
-        <p style="margin-bottom: 2rem; color: var(--text-secondary);">Start a new case by selecting the evidence root directory.</p>
-        <button id="browse-btn" class="btn">Browse Local Files</button>
+    <div id="init-container">
+        <h2 style="text-align: center; margin-bottom: 2rem; font-size: 1.5rem; color: var(--text-primary);">Welcome to Evidence Integrity Manager</h2>
+        
+        <div class="choice-grid">
+            <!-- Choice 1: Start New Case -->
+            <div class="choice-card" id="start-new-card">
+                <div class="choice-icon">📁</div>
+                <h3>Start a New Case</h3>
+                <p>Hash and verify a raw evidence directory on your local disk from scratch.</p>
+                <button id="browse-btn" class="btn" style="margin-top: 1rem;">Browse Local Files</button>
+            </div>
+            
+            <!-- Choice 2: Import Existing Case -->
+            <div class="choice-card" style="opacity: 0.6; cursor: not-allowed;">
+                <div class="choice-icon">📥</div>
+                <h3>Import Existing Case</h3>
+                <p>Load an existing master manifest JSON to review a previously hashed case.</p>
+                <button class="btn btn-secondary" style="margin-top: 1rem;" disabled>Coming Soon</button>
+            </div>
+        </div>
     </div>
 
     <!-- File Explorer UI -->
@@ -107,11 +124,15 @@
 
             if (data.done) {
                 evtSource.close();
-                document.getElementById("status-text").innerText =
-                    `Completed! Total artifacts: ${count}`;
-                const pBar = document.getElementById("progress-bar");
-                pBar.style.animation = "none";
-                pBar.style.background = "var(--success-color)";
+                document.getElementById('status-text').innerText = `Completed! Total artifacts: ${count}`;
+                const pBar = document.getElementById('progress-bar');
+                pBar.style.animation = 'none';
+                pBar.style.background = 'var(--success-color)';
+                
+                // Redirect to dashboard after 1 second
+                setTimeout(() => {
+                    window.location.href = "/dashboard";
+                }, 1000);
             }
         };
 

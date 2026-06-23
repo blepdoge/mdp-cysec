@@ -1,0 +1,132 @@
+{{define "dashboard_content"}}
+<div class="glass-panel">
+    <!-- Dashboard Header -->
+    <div class="dashboard-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1.5rem; margin-bottom: 1.5rem;">
+        <h2 style="font-size: 1.5rem; color: var(--accent-color); margin-bottom: 0.5rem;">Case Dashboard</h2>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+            <div class="stat-card">
+                <span class="stat-label">Total Artifacts</span>
+                <span class="stat-value">{{.Manifest.CaseMetadata.TotalArtifacts}}</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Master Root Hash</span>
+                <span class="stat-value" style="font-size: 0.8rem; word-break: break-all;">{{.Manifest.CaseMetadata.MasterRootHash}}</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Generation Time</span>
+                <span class="stat-value" style="font-size: 0.9rem;">{{.Manifest.CaseMetadata.Timestamp}}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Explorer -->
+    <div class="artifact-explorer">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 1.2rem;">Artifact Explorer</h3>
+            <input type="text" id="search-input" placeholder="Search by name, path, or hash..." style="padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; width: 300px;">
+        </div>
+
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                <thead>
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        <th style="padding: 0.75rem; color: var(--text-secondary);">Path</th>
+                        <th style="padding: 0.75rem; color: var(--text-secondary);">SHA256</th>
+                        <th style="padding: 0.75rem; color: var(--text-secondary);">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="artifact-table-body">
+                    <!-- Populated via JS -->
+                </tbody>
+            </table>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+            <span id="page-info" style="color: var(--text-secondary); font-size: 0.9rem;">Loading...</span>
+            <div style="display: flex; gap: 0.5rem;">
+                <button id="prev-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Previous</button>
+                <button id="next-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Next</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentPage = 1;
+    let currentQuery = "";
+
+    const searchInput = document.getElementById('search-input');
+    const tableBody = document.getElementById('artifact-table-body');
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const pageInfo = document.getElementById('page-info');
+
+    // Debounce search
+    let searchTimeout;
+    searchInput.addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            currentQuery = e.target.value;
+            currentPage = 1;
+            loadArtifacts();
+        }, 300);
+    });
+
+    prevBtn.addEventListener('click', () => {
+        if (currentPage > 1) {
+            currentPage--;
+            loadArtifacts();
+        }
+    });
+
+    nextBtn.addEventListener('click', () => {
+        currentPage++;
+        loadArtifacts();
+    });
+
+    function loadArtifacts() {
+        const url = `/api/artifacts?page=${currentPage}&q=${encodeURIComponent(currentQuery)}`;
+        
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                tableBody.innerHTML = "";
+                
+                if (!data.artifacts || data.artifacts.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No artifacts found.</td></tr>`;
+                    pageInfo.innerText = "0 results";
+                    nextBtn.disabled = true;
+                    return;
+                }
+
+                data.artifacts.forEach(art => {
+                    const tr = document.createElement('tr');
+                    tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+                    
+                    tr.innerHTML = `
+                        <td style="padding: 0.75rem; word-break: break-all; font-size: 0.9rem;">${art.path}</td>
+                        <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--accent-color);">${art.sha256.substring(0, 16)}...</td>
+                        <td style="padding: 0.75rem;">
+                            <button class="btn btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;" onclick="quoteArtifact('${art.path}')">Quote</button>
+                        </td>
+                    `;
+                    tableBody.appendChild(tr);
+                });
+
+                const totalPages = Math.ceil(data.total / data.limit);
+                pageInfo.innerText = `Page ${data.page} of ${totalPages} (${data.total} total)`;
+                
+                prevBtn.disabled = currentPage === 1;
+                nextBtn.disabled = currentPage >= totalPages;
+            });
+    }
+
+    function quoteArtifact(path) {
+        alert("Quote action triggered for: " + path + "\n\n(This will be implemented in Issue #4: Automated subset extraction)");
+    }
+
+    // Initial load
+    loadArtifacts();
+</script>
+{{end}}

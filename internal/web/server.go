@@ -8,9 +8,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/user/mdp-cysec/internal/hashing"
+	"github.com/user/mdp-cysec/internal/models"
 )
 
 type Server struct {
@@ -18,9 +21,10 @@ type Server struct {
 	templates     *template.Template
 	rootDir       string
 	
-	progressChan  chan int
-	clients       map[chan string]bool
-	clientsMu     sync.Mutex
+	progressChan    chan int
+	clients         map[chan string]bool
+	clientsMu       sync.Mutex
+	currentManifest *models.MasterManifest
 }
 
 func NewServer(rootDir string) (*Server, error) {
@@ -60,6 +64,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/start", s.handleStart)
 	s.mux.HandleFunc("/api/progress", s.handleProgressSSE)
 	s.mux.HandleFunc("/api/explore", s.handleExplore)
+	s.mux.HandleFunc("/api/artifacts", s.handleArtifacts)
+	s.mux.HandleFunc("/dashboard", s.handleDashboard)
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -105,6 +111,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		}
 		
 		manifest.SaveToFile("master_manifest.json")
+		s.currentManifest = manifest
 		
 		s.broadcastSSE(fmt.Sprintf(`{"processed": %d, "done": true}`, manifest.CaseMetadata.TotalArtifacts))
 	}()
@@ -236,5 +243,65 @@ func (s *Server) handleExplore(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"current_dir": dir,
 		"entries":     results,
+	})
+}
+
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	if s.currentManifest == nil {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	err := s.templates.ExecuteTemplate(w, "base.html", map[string]interface{}{
+		"Page": "dashboard",
+		"Manifest": s.currentManifest,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleArtifacts(w http.ResponseWriter, r *http.Request) {
+	if s.currentManifest == nil {
+		http.Error(w, "No manifest loaded", http.StatusBadRequest)
+		return
+	}
+
+	query := strings.ToLower(r.URL.Query().Get("q"))
+	pageStr := r.URL.Query().Get("page")
+	page, _ := strconv.Atoi(pageStr)
+	if page < 1 {
+		page = 1
+	}
+	limit := 50
+
+	var filtered []models.Artifact
+	for _, art := range s.currentManifest.Artifacts {
+		if query == "" || 
+		   strings.Contains(strings.ToLower(art.Path), query) || 
+		   strings.Contains(strings.ToLower(art.SHA256), query) ||
+		   strings.Contains(strings.ToLower(art.MD5), query) {
+			filtered = append(filtered, art)
+		}
+	}
+
+	total := len(filtered)
+	start := (page - 1) * limit
+	end := start + limit
+
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+
+	paginated := filtered[start:end]
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"artifacts": paginated,
+		"total":     total,
+		"page":      page,
+		"limit":     limit,
 	})
 }
