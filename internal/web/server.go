@@ -64,7 +64,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	err := s.templates.ExecuteTemplate(w, "index.html", nil)
+	err := s.templates.ExecuteTemplate(w, "base.html", nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
