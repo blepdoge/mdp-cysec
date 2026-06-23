@@ -1,3 +1,3 @@
-module github.com/user/mdp-cysec
+module mdp-cysec
 
 go 1.25.0

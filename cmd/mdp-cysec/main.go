@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/user/mdp-cysec/internal/web"
+	"mdp-cysec/internal/web"
 )
 
 func main() {

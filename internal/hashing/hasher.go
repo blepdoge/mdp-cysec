@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/user/mdp-cysec/internal/models"
+	"mdp-cysec/internal/models"
 )
 
 type Hasher struct {

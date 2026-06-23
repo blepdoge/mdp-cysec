@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/user/mdp-cysec/internal/hashing"
-	"github.com/user/mdp-cysec/internal/models"
+	"mdp-cysec/internal/hashing"
+	"mdp-cysec/internal/models"
 )
 
 type Server struct {
