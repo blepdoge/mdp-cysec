@@ -6,8 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -29,45 +31,86 @@ func (h *Hasher) GenerateManifest(progressChan chan<- int) (*models.MasterManife
 		Artifacts: make([]models.Artifact, 0),
 	}
 
-	var artifacts []models.Artifact
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	err := filepath.Walk(h.RootDir, func(path string, info os.FileInfo, err error) error {
+	// Step 1: Gather all files
+	var files []string
+	err := filepath.WalkDir(h.RootDir, func(path string, info fs.DirEntry, err error) error {
 		if err != nil {
-			return err // Ignore permission errors or handle? We return for now.
+			return nil // ignore errors like permissions for now
 		}
-		if info.IsDir() {
-			return nil
+		if info.Type().IsRegular() {
+			files = append(files, path)
 		}
-
-		wg.Add(1)
-		go func(filePath string, fileInfo os.FileInfo) {
-			defer wg.Done()
-
-			art, hashErr := hashFile(h.RootDir, filePath, fileInfo)
-			if hashErr != nil {
-				// We skip files we can't read
-				return
-			}
-
-			mu.Lock()
-			artifacts = append(artifacts, art)
-			if progressChan != nil {
-				progressChan <- len(artifacts)
-			}
-			mu.Unlock()
-
-		}(path, info)
-
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
 
+	totalFiles := len(files)
+	if totalFiles == 0 {
+		now := time.Now().UTC()
+		manifest.CaseMetadata = models.CaseMetadata{
+			TotalArtifacts:    0,
+			CreationTimestamp: &now,
+		}
+		if progressChan != nil {
+			close(progressChan)
+		}
+		return manifest, nil
+	}
+
+	// Step 2: Set up worker pool
+	numWorkers := runtime.NumCPU() * 2
+	jobs := make(chan string, totalFiles)
+	resultsChan := make(chan models.Artifact, totalFiles)
+
+	var artifacts []models.Artifact
+	var collectorWg sync.WaitGroup
+
+	// Background collector
+	collectorWg.Add(1)
+	go func() {
+		defer collectorWg.Done()
+		for art := range resultsChan {
+			artifacts = append(artifacts, art)
+			if progressChan != nil {
+				progressChan <- len(artifacts)
+			}
+		}
+	}()
+
+	var wg sync.WaitGroup
+
+	// Launch workers
+	for w := 1; w <= numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for path := range jobs {
+				// We need info for the artifact name
+				info, err := os.Stat(path)
+				if err != nil {
+					continue
+				}
+				if art, err := hashFile(h.RootDir, path, info); err == nil {
+					resultsChan <- art
+				}
+			}
+		}()
+	}
+
+	// Feed jobs
+	for _, path := range files {
+		jobs <- path
+	}
+	close(jobs)
+
+	// Wait for workers to finish
 	wg.Wait()
+	close(resultsChan)
+	// Wait for collector to finish
+	collectorWg.Wait()
+
 	if progressChan != nil {
 		close(progressChan)
 	}
