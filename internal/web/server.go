@@ -169,13 +169,26 @@ type FileEntry struct {
 
 func (s *Server) handleExplore(w http.ResponseWriter, r *http.Request) {
 	dir := r.URL.Query().Get("dir")
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			dir = home
-		} else {
-			dir = "C:\\"
+	if dir == "" || dir == "This PC" {
+		// List Windows Logical Drives
+		var results []FileEntry
+		for _, d := range "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
+			path := string(d) + ":\\"
+			if _, err := os.Stat(path); err == nil {
+				results = append(results, FileEntry{
+					Name:  path,
+					Path:  path,
+					IsDir: true,
+				})
+			}
 		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"current_dir": "This PC",
+			"entries":     results,
+		})
+		return
 	}
 
 	// Always make it an absolute, clean path
@@ -189,12 +202,19 @@ func (s *Server) handleExplore(w http.ResponseWriter, r *http.Request) {
 
 	var results []FileEntry
 	
-	// Add parent directory option if not at root
+	// Add parent directory option
 	parentDir := filepath.Dir(dir)
 	if parentDir != dir {
 		results = append(results, FileEntry{
 			Name:  "..",
 			Path:  parentDir,
+			IsDir: true,
+		})
+	} else {
+		// We are at the root of a drive (e.g., C:\), go back to "This PC"
+		results = append(results, FileEntry{
+			Name:  "..",
+			Path:  "This PC",
 			IsDir: true,
 		})
 	}
