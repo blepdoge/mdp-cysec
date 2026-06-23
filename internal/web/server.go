@@ -6,6 +6,8 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/user/mdp-cysec/internal/hashing"
@@ -57,6 +59,7 @@ func (s *Server) routes() {
 	// APIs
 	s.mux.HandleFunc("/api/start", s.handleStart)
 	s.mux.HandleFunc("/api/progress", s.handleProgressSSE)
+	s.mux.HandleFunc("/api/explore", s.handleExplore)
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -70,16 +73,31 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type StartRequest struct {
+	Directory string `json:"directory"`
+}
+
 func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	var req StartRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	targetDir := req.Directory
+	if targetDir == "" {
+		targetDir = s.rootDir // fallback
+	}
+
 	s.progressChan = make(chan int)
 
 	go func() {
-		hasher := hashing.NewHasher(s.rootDir)
+		hasher := hashing.NewHasher(targetDir)
 		manifest, err := hasher.GenerateManifest(s.progressChan)
 		if err != nil {
 			fmt.Printf("Hashing error: %v\n", err)
@@ -141,4 +159,62 @@ func (s *Server) handleProgressSSE(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+type FileEntry struct {
+	Name  string `json:"name"`
+	Path  string `json:"path"`
+	IsDir bool   `json:"is_dir"`
+}
+
+func (s *Server) handleExplore(w http.ResponseWriter, r *http.Request) {
+	dir := r.URL.Query().Get("dir")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			dir = home
+		} else {
+			dir = "C:\\"
+		}
+	}
+
+	// Always make it an absolute, clean path
+	dir = filepath.Clean(dir)
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var results []FileEntry
+	
+	// Add parent directory option if not at root
+	parentDir := filepath.Dir(dir)
+	if parentDir != dir {
+		results = append(results, FileEntry{
+			Name:  "..",
+			Path:  parentDir,
+			IsDir: true,
+		})
+	}
+
+	for _, e := range entries {
+		// Only list directories for this feature
+		if !e.IsDir() {
+			continue
+		}
+		
+		results = append(results, FileEntry{
+			Name:  e.Name(),
+			Path:  filepath.Join(dir, e.Name()),
+			IsDir: true,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"current_dir": dir,
+		"entries":     results,
+	})
 }

@@ -16,43 +16,82 @@
         </div>
     </div>
 
-    <div id="init-container" style="text-align: center">
-        <p style="margin-bottom: 2rem; color: var(--text-secondary)">
-            Start a new case to begin the hashing process.
-        </p>
-        <button
-            id="start-btn"
-            style="
-                background: var(--accent-color);
-                color: white;
-                border: none;
-                padding: 0.75rem 2rem;
-                border-radius: 8px;
-                font-weight: 600;
-                cursor: pointer;
-                transition: background 0.2s;
-            "
-        >
-            Start New Case
-        </button>
+    <div id="init-container" style="text-align: center;">
+        <p style="margin-bottom: 2rem; color: var(--text-secondary);">Start a new case by selecting the evidence root directory.</p>
+        <button id="browse-btn" class="btn">Browse Local Files</button>
+    </div>
+
+    <!-- File Explorer UI -->
+    <div id="explorer-container" style="display: none;">
+        <h2 style="margin-bottom: 1rem; font-size: 1.2rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">Select Evidence Directory</h2>
+        <div style="margin-bottom: 1rem; font-family: monospace; color: var(--accent-color); background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 4px;" id="current-dir"></div>
+        
+        <div id="folder-list" class="folder-list">
+            <!-- Populated via JS -->
+        </div>
+
+        <div style="margin-top: 1.5rem; display: flex; justify-content: space-between;">
+            <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
+            <button id="confirm-btn" class="btn">Hash this Directory</button>
+        </div>
     </div>
 </div>
 
 <script>
-    document.getElementById("start-btn").addEventListener("click", () => {
-        document.getElementById("init-container").style.display = "none";
-        document.getElementById("status-container").style.display = "block";
+    let selectedPath = "";
 
-        // Trigger backend start
-        fetch("/api/start", { method: "POST" })
-            .then((res) => res.json())
-            .then((data) => {
-                if (data.status === "started") {
-                    connectSSE();
-                } else {
-                    alert("Failed to start hashing engine");
-                }
+    document.getElementById('browse-btn').addEventListener('click', () => {
+        document.getElementById('init-container').style.display = 'none';
+        document.getElementById('explorer-container').style.display = 'block';
+        loadDirectory(""); // load default
+    });
+
+    document.getElementById('cancel-btn').addEventListener('click', () => {
+        document.getElementById('explorer-container').style.display = 'none';
+        document.getElementById('init-container').style.display = 'block';
+    });
+
+    function loadDirectory(path) {
+        const url = path ? `/api/explore?dir=${encodeURIComponent(path)}` : `/api/explore`;
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                selectedPath = data.current_dir;
+                document.getElementById('current-dir').innerText = data.current_dir;
+                
+                const list = document.getElementById('folder-list');
+                list.innerHTML = "";
+                data.entries.forEach(entry => {
+                    const div = document.createElement('div');
+                    div.className = 'folder-item';
+                    div.innerHTML = `📁 ${entry.name}`;
+                    div.onclick = () => loadDirectory(entry.path);
+                    list.appendChild(div);
+                });
+            })
+            .catch(err => {
+                alert("Failed to read directory. " + err);
+                loadDirectory(selectedPath); // revert
             });
+    }
+
+    document.getElementById('confirm-btn').addEventListener('click', () => {
+        document.getElementById('explorer-container').style.display = 'none';
+        document.getElementById('status-container').style.display = 'block';
+        
+        fetch("/api/start", { 
+            method: "POST",
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ directory: selectedPath })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === "started") {
+                connectSSE();
+            } else {
+                alert("Failed to start hashing engine");
+            }
+        });
     });
 
     function connectSSE() {
