@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -177,25 +178,31 @@ type FileEntry struct {
 func (s *Server) handleExplore(w http.ResponseWriter, r *http.Request) {
 	dir := r.URL.Query().Get("dir")
 	if dir == "" || dir == "This PC" {
-		// List Windows Logical Drives
-		var results []FileEntry
-		for _, d := range "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
-			path := string(d) + ":\\"
-			if _, err := os.Stat(path); err == nil {
-				results = append(results, FileEntry{
-					Name:  path,
-					Path:  path,
-					IsDir: true,
-				})
+		if runtime.GOOS == "windows" {
+			// List Windows Logical Drives
+			var results []FileEntry
+			for _, d := range "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
+				path := string(d) + ":\\"
+				if _, err := os.Stat(path); err == nil {
+					results = append(results, FileEntry{
+						Name:  path,
+						Path:  path,
+						IsDir: true,
+					})
+				}
 			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"current_dir": "This PC",
+				"entries":     results,
+			})
+			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"current_dir": "This PC",
-			"entries":     results,
-		})
-		return
+		// On macOS/Linux there are no drive letters; start at the
+		// filesystem root and let the user navigate from there.
+		dir = "/"
 	}
 
 	// Always make it an absolute, clean path
