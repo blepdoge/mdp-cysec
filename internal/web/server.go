@@ -404,8 +404,10 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save the manifest to master_manifest.json in the current working directory
-	if err := manifest.SaveToFile("master_manifest.json"); err != nil {
+	// Save the manifest with a unique timestamped filename in the current working directory
+	timestamp := time.Now().Format("20060102_150405")
+	filename := fmt.Sprintf("manifest_%s.json", timestamp)
+	if err := manifest.SaveToFile(filename); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to save manifest locally: " + err.Error()})
