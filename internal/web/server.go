@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"mdp-cysec/internal/hashing"
 	"mdp-cysec/internal/models"
@@ -130,7 +131,9 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		
-		manifest.SaveToFile("master_manifest.json")
+		timestamp := time.Now().Format("20060102_150405")
+		filename := fmt.Sprintf("manifest_%s.json", timestamp)
+		manifest.SaveToFile(filename)
 		s.currentManifest = manifest
 		
 		s.stateMu.Lock()

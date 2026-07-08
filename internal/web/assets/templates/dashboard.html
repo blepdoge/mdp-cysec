@@ -4,7 +4,10 @@
     <div class="dashboard-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1.5rem; margin-bottom: 1.5rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
             <h2 style="font-size: 1.5rem; color: var(--accent-color); margin: 0;">Case dashboard</h2>
-            <a href="/" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">← Back to home</a>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <button id="verify-btn" class="btn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; background: var(--success-color);" onclick="alert('Verify integrity clicked! (This will be implemented in Issue #5: Post-transfer integrity check)')">🛡️ Verify Integrity</button>
+                <a href="/" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">← Back to home</a>
+            </div>
         </div>
         
         <!-- Case Metadata Placeholders -->
