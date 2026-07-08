@@ -227,29 +227,7 @@
     }
 
     function quoteArtifact(path) {
-        const art = loadedArtifacts.find(a => a.path === path);
-        if (!art) return;
-
-        // Clipboard copy (first 8 characters of SHA256 prepended to the name)
-        const prefix = art.sha256.substring(0, 8);
-        const exhibitName = `${prefix}_${art.name}`;
-        const clipText = `Exhibit Name: ${exhibitName}\nOriginal Path: ${art.path}\nSHA256: ${art.sha256}\nSHA1: ${art.sha1}\nMD5: ${art.md5}`;
-        
-        navigator.clipboard.writeText(clipText)
-            .then(() => {
-                if (confirm(`Exhibit Quoted!\nCopied details to clipboard for:\n${exhibitName}\n\nWould you like to view the Report Exhibits tab?`)) {
-                    switchTab('report');
-                }
-            })
-            .catch(err => {
-                console.error("Clipboard copy failed:", err);
-            });
-
-        // Add to report exhibits list (frontend only)
-        if (!quotedExhibits.some(e => e.path === art.path)) {
-            quotedExhibits.push(art);
-            renderReport();
-        }
+        alert("Quote action triggered for: " + path + "\n\n(This will be implemented in Issue #4: Automated subset extraction)");
     }
 
     function renderReport() {
