@@ -29,11 +29,12 @@
             </div>
             
             <!-- Choice 2: Import Existing Case -->
-            <div class="choice-card" style="opacity: 0.6; cursor: not-allowed;">
+            <div class="choice-card" id="import-case-card">
                 <div class="choice-icon">📥</div>
                 <h3>Import existing case</h3>
                 <p>Load an existing master manifest JSON to review a previously hashed case.</p>
-                <button class="btn btn-secondary" style="margin-top: 1rem;" disabled>Coming soon</button>
+                <button id="import-btn" class="btn btn-secondary" style="margin-top: 1rem;">Upload manifest</button>
+                <input type="file" id="import-file-input" accept=".json" style="display: none;">
             </div>
         </div>
     </div>
@@ -49,7 +50,7 @@
 
         <div style="margin-top: 1.5rem; display: flex; justify-content: space-between;">
             <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
-            <button id="confirm-btn" class="btn">Hash this directory</button>
+            <button id="confirm-btn" class="btn" style="opacity: 0.5; cursor: not-allowed;" disabled>Hash this directory</button>
         </div>
     </div>
 </div>
@@ -68,6 +69,36 @@
         document.getElementById('init-container').style.display = 'block';
     });
 
+    document.getElementById('import-btn').addEventListener('click', () => {
+        document.getElementById('import-file-input').click();
+    });
+
+    document.getElementById('import-file-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('manifest', file);
+
+        fetch('/api/import', {
+            method: 'POST',
+            body: formData
+        })
+        .then(async res => {
+            const data = await res.json();
+            if (res.ok && data.status === 'success') {
+                window.location.href = '/dashboard';
+            } else {
+                alert("Import failed: " + (data.error || "Invalid file format or server error"));
+                e.target.value = ''; // clear input
+            }
+        })
+        .catch(err => {
+            alert("Network error: " + err.message);
+            e.target.value = '';
+        });
+    });
+
     function loadDirectory(path) {
         const url = path ? `/api/explore?dir=${encodeURIComponent(path)}` : `/api/explore`;
         fetch(url)
@@ -75,6 +106,17 @@
             .then(data => {
                 selectedPath = data.current_dir;
                 document.getElementById('current-dir').innerText = data.current_dir;
+                
+                const confirmBtn = document.getElementById('confirm-btn');
+                if (!selectedPath || selectedPath === "This PC") {
+                    confirmBtn.disabled = true;
+                    confirmBtn.style.opacity = "0.5";
+                    confirmBtn.style.cursor = "not-allowed";
+                } else {
+                    confirmBtn.disabled = false;
+                    confirmBtn.style.opacity = "1";
+                    confirmBtn.style.cursor = "pointer";
+                }
                 
                 const list = document.getElementById('folder-list');
                 list.innerHTML = "";

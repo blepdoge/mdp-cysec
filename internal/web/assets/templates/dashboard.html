@@ -2,51 +2,97 @@
 <div class="glass-panel">
     <!-- Dashboard Header -->
     <div class="dashboard-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1.5rem; margin-bottom: 1.5rem;">
-        <h2 style="font-size: 1.5rem; color: var(--accent-color); margin-bottom: 0.5rem;">Case dashboard</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <h2 style="font-size: 1.5rem; color: var(--accent-color); margin: 0;">Case dashboard</h2>
+            <a href="/" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">← Back to home</a>
+        </div>
         
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+        <!-- Case Metadata Placeholders -->
+        <div style="margin-top: 1rem; background: rgba(0,0,0,0.25); padding: 1rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+            <div>
+                <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">Case Merkle Root Hash</span>
+                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary);">
+                    {{if .Manifest.CaseMetadata.CaseRootHash}}
+                        {{.Manifest.CaseMetadata.CaseRootHash}}
+                    {{else}}
+                        <span style="color: var(--text-secondary); font-style: italic;">[Placeholder] Pending calculation (Issue #3)</span>
+                    {{end}}
+                </span>
+            </div>
+            <div>
+                <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">RFC 3161 Timestamp Attestation</span>
+                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary);">
+                    {{if .Manifest.CaseMetadata.RFC3161TokenPath}}
+                        Certified: {{.Manifest.CaseMetadata.RFC3161TokenPath}}
+                    {{else}}
+                        <span style="color: var(--text-secondary); font-style: italic;">[Placeholder] Pending attestation (Issue #3)</span>
+                    {{end}}
+                </span>
+            </div>
+        </div>
+
+        <!-- Overview Stats -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-top: 1.5rem;">
             <div class="stat-card">
                 <span class="stat-label">Total artifacts</span>
                 <span class="stat-value">{{.Manifest.CaseMetadata.TotalArtifacts}}</span>
             </div>
-            <div class="stat-card">
-                <span class="stat-label">Master root hash</span>
-                <span class="stat-value" style="font-size: 0.8rem; word-break: break-all;">{{.Manifest.CaseMetadata.CaseRootHash}}</span>
+            <div class="stat-card" style="border-left: 4px solid var(--success-color);">
+                <span class="stat-label">Verified</span>
+                <span class="stat-value" style="color: var(--success-color);">{{.Manifest.CaseMetadata.TotalArtifacts}} <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-secondary);">/ {{.Manifest.CaseMetadata.TotalArtifacts}}</span></span>
             </div>
-            <div class="stat-card">
-                <span class="stat-label">Generation time</span>
-                <span class="stat-value" style="font-size: 0.9rem;">{{.Manifest.CaseMetadata.CreationTimestamp}}</span>
+            <div class="stat-card" style="border-left: 4px solid #ef4444;">
+                <span class="stat-label">Missing</span>
+                <span class="stat-value" style="color: #ef4444;">0</span>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid #f59e0b;">
+                <span class="stat-label">Modified</span>
+                <span class="stat-value" style="color: #f59e0b;">0</span>
             </div>
         </div>
     </div>
 
-    <!-- Explorer -->
-    <div class="artifact-explorer">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <h3 style="font-size: 1.2rem;">Artifact explorer</h3>
-            <input type="text" id="search-input" placeholder="Search by name, path, or hash..." style="padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; width: 300px;">
+    <!-- Main Grid: Explorer & Report View -->
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; align-items: start; margin-top: 1.5rem;">
+        <!-- Explorer -->
+        <div class="artifact-explorer">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem; flex-wrap: wrap;">
+                <h3 style="font-size: 1.2rem; margin: 0;">Artifact explorer</h3>
+                <input type="text" id="search-input" placeholder="Search by name, path, or hash..." style="padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; width: 300px;">
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Path</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">SHA256</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="artifact-table-body">
+                        <!-- Populated via JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+                <span id="page-info" style="color: var(--text-secondary); font-size: 0.9rem;">Loading...</span>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button id="prev-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Previous</button>
+                    <button id="next-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Next</button>
+                </div>
+            </div>
         </div>
 
-        <div style="overflow-x: auto;">
-            <table style="width: 100%; border-collapse: collapse; text-align: left;">
-                <thead>
-                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        <th style="padding: 0.75rem; color: var(--text-secondary);">Path</th>
-                        <th style="padding: 0.75rem; color: var(--text-secondary);">SHA256</th>
-                        <th style="padding: 0.75rem; color: var(--text-secondary);">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="artifact-table-body">
-                    <!-- Populated via JS -->
-                </tbody>
-            </table>
-        </div>
-
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
-            <span id="page-info" style="color: var(--text-secondary); font-size: 0.9rem;">Loading...</span>
-            <div style="display: flex; gap: 0.5rem;">
-                <button id="prev-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Previous</button>
-                <button id="next-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Next</button>
+        <!-- Report View (Frontend Mock) -->
+        <div class="report-view" style="background: rgba(0,0,0,0.2); padding: 1.5rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); min-width: 250px;">
+            <h3 style="font-size: 1.2rem; margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+                <span>Report exhibits</span>
+                <span id="report-count" style="font-size: 0.85rem; color: var(--text-secondary); background: rgba(255,255,255,0.1); padding: 0.1rem 0.5rem; border-radius: 10px;">0</span>
+            </h3>
+            <div id="report-items" style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem;">
+                <!-- Populated via JS -->
             </div>
         </div>
     </div>
@@ -55,6 +101,8 @@
 <script>
     let currentPage = 1;
     let currentQuery = "";
+    let loadedArtifacts = [];
+    let quotedExhibits = [];
 
     const searchInput = document.getElementById('search-input');
     const tableBody = document.getElementById('artifact-table-body');
@@ -92,15 +140,16 @@
             .then(res => res.json())
             .then(data => {
                 tableBody.innerHTML = "";
+                loadedArtifacts = data.artifacts || [];
                 
-                if (!data.artifacts || data.artifacts.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No artifacts found.</td></tr>`;
+                if (loadedArtifacts.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No artifacts found.</td></tr>`;
                     pageInfo.innerText = "0 results";
                     nextBtn.disabled = true;
                     return;
                 }
 
-                data.artifacts.forEach(art => {
+                loadedArtifacts.forEach(art => {
                     const tr = document.createElement('tr');
                     tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
                     
@@ -123,10 +172,83 @@
     }
 
     function quoteArtifact(path) {
-        alert("Quote action triggered for: " + path + "\n\n(This will be implemented in Issue #4: Automated subset extraction)");
+        const art = loadedArtifacts.find(a => a.path === path);
+        if (!art) return;
+
+        // Clipboard copy (first 8 characters of SHA256 prepended to the name)
+        const prefix = art.sha256.substring(0, 8);
+        const exhibitName = `${prefix}_${art.name}`;
+        const clipText = `Exhibit Name: ${exhibitName}\nOriginal Path: ${art.path}\nSHA256: ${art.sha256}\nSHA1: ${art.sha1}\nMD5: ${art.md5}`;
+        
+        navigator.clipboard.writeText(clipText)
+            .then(() => {
+                // Fulfill clipboard notification requirement
+                alert(`Exhibit Quoted!\nCopied details to clipboard for:\n${exhibitName}`);
+            })
+            .catch(err => {
+                console.error("Clipboard copy failed:", err);
+            });
+
+        // Add to report exhibits list (frontend only)
+        if (!quotedExhibits.some(e => e.path === art.path)) {
+            quotedExhibits.push(art);
+            renderReport();
+        }
+    }
+
+    function renderReport() {
+        const reportItems = document.getElementById('report-items');
+        const reportCount = document.getElementById('report-count');
+        reportCount.innerText = quotedExhibits.length;
+
+        if (quotedExhibits.length === 0) {
+            reportItems.innerHTML = `
+                <div style="color: var(--text-secondary); font-size: 0.9rem; text-align: center; padding: 2rem 0;">
+                    No exhibits quoted yet.
+                </div>`;
+            return;
+        }
+
+        reportItems.innerHTML = "";
+        quotedExhibits.forEach((exhibit, index) => {
+            const div = document.createElement('div');
+            div.style.background = "rgba(255,255,255,0.03)";
+            div.style.border = "1px solid rgba(255,255,255,0.05)";
+            div.style.borderRadius = "8px";
+            div.style.padding = "0.75rem";
+            div.style.display = "flex";
+            div.style.flexDirection = "column";
+            div.style.gap = "0.25rem";
+            div.style.position = "relative";
+
+            const prefix = exhibit.sha256.substring(0, 8);
+            const exhibitName = `${prefix}_${exhibit.name}`;
+
+            div.innerHTML = `
+                <div style="font-weight: 600; font-size: 0.9rem; color: var(--accent-color); padding-right: 2rem; word-break: break-all;">
+                    ${exhibitName}
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary); word-break: break-all;">
+                    Orig: ${exhibit.path}
+                </div>
+                <div style="font-size: 0.75rem; font-family: monospace; color: var(--text-secondary);">
+                    Hash: ${exhibit.sha256.substring(0, 16)}...
+                </div>
+                <button onclick="removeQuote(${index})" style="position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; color: #ef4444; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.1rem;" title="Remove exhibit">
+                    &times;
+                </button>
+            `;
+            reportItems.appendChild(div);
+        });
+    }
+
+    window.removeQuote = function(index) {
+        quotedExhibits.splice(index, 1);
+        renderReport();
     }
 
     // Initial load
     loadArtifacts();
+    renderReport();
 </script>
 {{end}}

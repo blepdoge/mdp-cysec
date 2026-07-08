@@ -18,14 +18,20 @@ import (
 )
 
 type Server struct {
-	mux           *http.ServeMux
-	templates     *template.Template
-	rootDir       string
+	mux             *http.ServeMux
+	templates       *template.Template
+	rootDir         string
 	
-	progressChan    chan int
 	clients         map[chan string]bool
 	clientsMu       sync.Mutex
 	currentManifest *models.MasterManifest
+
+	// Thread-safe state tracking for hashing progress
+	stateMu         sync.Mutex
+	hashingActive   bool
+	hashingDone     bool
+	hashingProgress int
+	hashingTotal    int
 }
 
 func NewServer(rootDir string) (*Server, error) {
@@ -66,6 +72,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/progress", s.handleProgressSSE)
 	s.mux.HandleFunc("/api/explore", s.handleExplore)
 	s.mux.HandleFunc("/api/artifacts", s.handleArtifacts)
+	s.mux.HandleFunc("/api/import", s.handleImport)
 	s.mux.HandleFunc("/dashboard", s.handleDashboard)
 }
 
@@ -101,24 +108,45 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		targetDir = s.rootDir // fallback
 	}
 
-	s.progressChan = make(chan int)
+	// Update hashing state thread-safely
+	s.stateMu.Lock()
+	s.hashingActive = true
+	s.hashingDone = false
+	s.hashingProgress = 0
+	s.hashingTotal = 0
+	s.stateMu.Unlock()
+
+	progressChan := make(chan int, 100)
 
 	go func() {
 		hasher := hashing.NewHasher(targetDir)
-		manifest, err := hasher.GenerateManifest(s.progressChan)
+		manifest, err := hasher.GenerateManifest(progressChan)
 		if err != nil {
 			fmt.Printf("Hashing error: %v\n", err)
+			s.stateMu.Lock()
+			s.hashingActive = false
+			s.hashingDone = false
+			s.stateMu.Unlock()
 			return
 		}
 		
 		manifest.SaveToFile("master_manifest.json")
 		s.currentManifest = manifest
 		
+		s.stateMu.Lock()
+		s.hashingActive = false
+		s.hashingDone = true
+		s.hashingTotal = manifest.CaseMetadata.TotalArtifacts
+		s.stateMu.Unlock()
+		
 		s.broadcastSSE(fmt.Sprintf(`{"processed": %d, "done": true}`, manifest.CaseMetadata.TotalArtifacts))
 	}()
 
 	go func() {
-		for progress := range s.progressChan {
+		for progress := range progressChan {
+			s.stateMu.Lock()
+			s.hashingProgress = progress
+			s.stateMu.Unlock()
 			s.broadcastSSE(fmt.Sprintf(`{"processed": %d, "done": false}`, progress))
 		}
 	}()
@@ -131,7 +159,11 @@ func (s *Server) broadcastSSE(msg string) {
 	s.clientsMu.Lock()
 	defer s.clientsMu.Unlock()
 	for clientChan := range s.clients {
-		clientChan <- msg
+		select {
+		case clientChan <- msg:
+		default:
+			// Non-blocking write: drop message if client buffer is full to prevent deadlocks
+		}
 	}
 }
 
@@ -139,6 +171,7 @@ func (s *Server) handleProgressSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -146,7 +179,22 @@ func (s *Server) handleProgressSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientChan := make(chan string)
+	// Check current state first
+	s.stateMu.Lock()
+	isDone := s.hashingDone
+	isActive := s.hashingActive
+	progress := s.hashingProgress
+	total := s.hashingTotal
+	s.stateMu.Unlock()
+
+	if isDone {
+		fmt.Fprintf(w, "data: {\"processed\": %d, \"done\": true}\n\n", total)
+		flusher.Flush()
+		return
+	}
+
+	// Create a buffered channel to avoid blocking the publisher
+	clientChan := make(chan string, 100)
 	s.clientsMu.Lock()
 	s.clients[clientChan] = true
 	s.clientsMu.Unlock()
@@ -155,8 +203,14 @@ func (s *Server) handleProgressSSE(w http.ResponseWriter, r *http.Request) {
 		s.clientsMu.Lock()
 		delete(s.clients, clientChan)
 		s.clientsMu.Unlock()
-		close(clientChan)
+		// Let garbage collector reclaim the channel to avoid panic on write
 	}()
+
+	// Send current progress immediately if active
+	if isActive {
+		fmt.Fprintf(w, "data: {\"processed\": %d, \"done\": false}\n\n", progress)
+		flusher.Flush()
+	}
 
 	for {
 		select {
@@ -311,4 +365,52 @@ func (s *Server) handleArtifacts(w http.ResponseWriter, r *http.Request) {
 		"page":      page,
 		"limit":     limit,
 	})
+}
+
+func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Limit upload size to 10MB
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
+
+	file, _, err := r.FormFile("manifest")
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to read uploaded file: " + err.Error()})
+		return
+	}
+	defer file.Close()
+
+	var manifest models.MasterManifest
+	if err := json.NewDecoder(file).Decode(&manifest); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON format: " + err.Error()})
+		return
+	}
+
+	// Schema validation: check that case_metadata exists and artifacts is not nil
+	if manifest.CaseMetadata.CreationTimestamp == nil && len(manifest.Artifacts) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid manifest structure: missing case_metadata or artifacts"})
+		return
+	}
+
+	// Save the manifest to master_manifest.json in the current working directory
+	if err := manifest.SaveToFile("master_manifest.json"); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to save manifest locally: " + err.Error()})
+		return
+	}
+
+	s.currentManifest = &manifest
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }

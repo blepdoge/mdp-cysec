@@ -5,19 +5,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 
 	"mdp-cysec/internal/web"
 )
 
 func main() {
-	defaultDir, err := os.UserHomeDir()
-	if err != nil {
-		defaultDir = "."
-	}
-
 	port := flag.Int("port", 8080, "Port to run the web server on")
-	rootDir := flag.String("dir", defaultDir, "Target evidence directory")
+	rootDir := flag.String("dir", "", "Target evidence directory")
 	flag.Parse()
 
 	server, err := web.NewServer(*rootDir)
