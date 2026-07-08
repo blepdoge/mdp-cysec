@@ -6,12 +6,12 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/user/mdp-cysec/internal/web"
+	"mdp-cysec/internal/web"
 )
 
 func main() {
 	port := flag.Int("port", 8080, "Port to run the web server on")
-	rootDir := flag.String("dir", "C:/Users/Louis-Marie/Documents", "Target evidence directory")
+	rootDir := flag.String("dir", "", "Target evidence directory")
 	flag.Parse()
 
 	server, err := web.NewServer(*rootDir)

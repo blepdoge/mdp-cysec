@@ -17,11 +17,21 @@ The project currently has two major milestones completed on the `main` branch:
 - **Binary embedded assets**: Utilizes Go's `embed` package to compile all CSS and HTML templates directly into the final executable, meaning no loose web files are required for distribution.
 - **Server-sent events (SSE)**: The backend provides an `/api/progress` streaming endpoint. This channels live processing numbers from the hashing worker pool directly to the web UI without the need for heavy WebSocket libraries or repeated polling.
 
+### 3. Case Import Feature (Issue #7)
+- **Manifest Selection**: Enables importing pre-calculated case results by uploading an existing `master_manifest.json` file.
+- **Robust Schema Validation**: Checks uploaded JSON schemas for metadata and artifact structures, rendering inline error messages for wrong/invalid formats.
+
+### 4. Interactive HTML Dashboard (Issue #6)
+- **Tabbed Layout**: Implements a dedicated tab system for the **Artifact Explorer** and **Report Exhibits** to optimize screen space and prevent layout squishing.
+- **Overview Metrics**: Displays status cards for **Verified**, **Missing**, and **Modified** files.
+- **Back-and-Forth Navigation**: Features seamless transitions between tabs, prompting users to view exhibits after quoting, or return to the explorer when the report is empty.
+- **Merkle & RFC Placeholders**: Includes visual zones prepared for future Merkle root hashing and RFC 3161 timestamping integrations.
+
 ## How to run locally
 
 1. Run the application via the CLI:
    ```bash
-   go run cmd/mdp-cysec/main.go -dir "C:/path/to/evidence/folder"
+   go run cmd/mdp-cysec/main.go
    ```
 2. Navigate to `http://localhost:8080` in your browser.
-3. Click **Start New Case** to observe the hashing engine processing files in real-time through the SSE UI stream.
+3. Click **Start New Case** to select a directory to hash, or **Import existing case** to upload a manifest file.

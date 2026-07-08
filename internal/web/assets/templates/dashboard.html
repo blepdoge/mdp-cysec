@@ -1,0 +1,272 @@
+{{define "dashboard_content"}}
+<div class="glass-panel">
+    <!-- Dashboard Header -->
+    <div class="dashboard-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1.5rem; margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <h2 style="font-size: 1.5rem; color: var(--accent-color); margin: 0;">Case dashboard</h2>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <button id="verify-btn" class="btn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; background: var(--success-color);" onclick="alert('Verify integrity clicked! (This will be implemented in Issue #5: Post-transfer integrity check)')">🛡️ Verify Integrity</button>
+                <a href="/" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">← Back to home</a>
+            </div>
+        </div>
+
+        <!-- Case Metadata Placeholders -->
+        <div style="margin-top: 1rem; background: rgba(0,0,0,0.25); padding: 1rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+            <div>
+                <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">Case Merkle Root Hash</span>
+                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary);">
+                    {{if .Manifest.CaseMetadata.CaseRootHash}}
+                        {{.Manifest.CaseMetadata.CaseRootHash}}
+                    {{else}}
+                        <span style="color: var(--text-secondary); font-style: italic;">[Placeholder] Pending calculation (Issue #3)</span>
+                    {{end}}
+                </span>
+            </div>
+            <div>
+                <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">RFC 3161 Timestamp Attestation</span>
+                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary);">
+                    {{if .Manifest.CaseMetadata.RFC3161TokenPath}}
+                        Certified: {{.Manifest.CaseMetadata.RFC3161TokenPath}}
+                    {{else}}
+                        <span style="color: var(--text-secondary); font-style: italic;">[Placeholder] Pending attestation (Issue #3)</span>
+                    {{end}}
+                </span>
+            </div>
+        </div>
+
+        <!-- Overview Stats -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+            <div class="stat-card">
+                <span class="stat-label">Total artifacts</span>
+                <span class="stat-value">{{.Manifest.CaseMetadata.TotalArtifacts}}</span>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid var(--success-color);">
+                <span class="stat-label">Verified</span>
+                <span class="stat-value" style="color: var(--success-color);">{{.Manifest.CaseMetadata.TotalArtifacts}} <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-secondary);">/ {{.Manifest.CaseMetadata.TotalArtifacts}}</span></span>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid #ef4444;">
+                <span class="stat-label">Missing</span>
+                <span class="stat-value" style="color: #ef4444;">0</span>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid #f59e0b;">
+                <span class="stat-label">Modified</span>
+                <span class="stat-value" style="color: #f59e0b;">0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <div style="display: flex; gap: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); margin-top: 1.5rem; margin-bottom: 1.5rem;">
+        <button id="tab-explorer-btn" class="btn" style="background: none; border: none; border-bottom: 3px solid var(--accent-color); border-radius: 0; color: var(--text-primary); padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-family: var(--font-family); font-size: 1rem; transition: all 0.2s;">
+            🔍 Artifact explorer
+        </button>
+        <button id="tab-report-btn" class="btn" style="background: none; border: none; border-bottom: 3px solid transparent; border-radius: 0; color: var(--text-secondary); padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-family: var(--font-family); font-size: 1rem; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem;">
+            📋 Report exhibits <span id="report-tab-count" style="font-size: 0.75rem; background: rgba(255,255,255,0.15); color: var(--text-primary); padding: 0.1rem 0.5rem; border-radius: 10px;">0</span>
+        </button>
+    </div>
+
+    <!-- Tab Contents -->
+    <div id="explorer-tab-content">
+        <!-- Explorer -->
+        <div class="artifact-explorer">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem; flex-wrap: wrap;">
+                <h3 style="font-size: 1.2rem; margin: 0;">Artifact explorer</h3>
+                <input type="text" id="search-input" placeholder="Search by name, path, or hash..." style="padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; width: 300px;">
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Path</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">SHA256</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="artifact-table-body">
+                        <!-- Populated via JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+                <span id="page-info" style="color: var(--text-secondary); font-size: 0.9rem;">Loading...</span>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button id="prev-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Previous</button>
+                    <button id="next-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Next</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="report-tab-content" style="display: none;">
+        <!-- Report View (Frontend Mock) -->
+        <div class="report-view">
+            <h3 style="font-size: 1.2rem; margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">
+                Report exhibits
+            </h3>
+
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Exhibit name</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Original path</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">SHA256</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary); width: 100px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="report-table-body">
+                        <!-- Populated via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentPage = 1;
+    let currentQuery = "";
+    let loadedArtifacts = [];
+    let quotedExhibits = [];
+
+    const searchInput = document.getElementById('search-input');
+    const tableBody = document.getElementById('artifact-table-body');
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const pageInfo = document.getElementById('page-info');
+
+    const tabExplorerBtn = document.getElementById('tab-explorer-btn');
+    const tabReportBtn = document.getElementById('tab-report-btn');
+    const explorerTabContent = document.getElementById('explorer-tab-content');
+    const reportTabContent = document.getElementById('report-tab-content');
+
+    // Tab Switching Navigation
+    tabExplorerBtn.addEventListener('click', () => switchTab('explorer'));
+    tabReportBtn.addEventListener('click', () => switchTab('report'));
+
+    function switchTab(tab) {
+        if (tab === 'explorer') {
+            tabExplorerBtn.style.borderBottomColor = 'var(--accent-color)';
+            tabExplorerBtn.style.color = 'var(--text-primary)';
+            tabReportBtn.style.borderBottomColor = 'transparent';
+            tabReportBtn.style.color = 'var(--text-secondary)';
+            explorerTabContent.style.display = 'block';
+            reportTabContent.style.display = 'none';
+        } else {
+            tabExplorerBtn.style.borderBottomColor = 'transparent';
+            tabExplorerBtn.style.color = 'var(--text-secondary)';
+            tabReportBtn.style.borderBottomColor = 'var(--accent-color)';
+            tabReportBtn.style.color = 'var(--text-primary)';
+            explorerTabContent.style.display = 'none';
+            reportTabContent.style.display = 'block';
+        }
+    }
+    window.switchTab = switchTab; // Expose globally for back links
+
+    // Debounce search
+    let searchTimeout;
+    searchInput.addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            currentQuery = e.target.value;
+            currentPage = 1;
+            loadArtifacts();
+        }, 300);
+    });
+
+    prevBtn.addEventListener('click', () => {
+        if (currentPage > 1) {
+            currentPage--;
+            loadArtifacts();
+        }
+    });
+
+    nextBtn.addEventListener('click', () => {
+        currentPage++;
+        loadArtifacts();
+    });
+
+    function loadArtifacts() {
+        const url = `/api/artifacts?page=${currentPage}&q=${encodeURIComponent(currentQuery)}`;
+
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                tableBody.innerHTML = "";
+                loadedArtifacts = data.artifacts || [];
+
+                if (loadedArtifacts.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No artifacts found.</td></tr>`;
+                    pageInfo.innerText = "0 results";
+                    nextBtn.disabled = true;
+                    return;
+                }
+
+                loadedArtifacts.forEach(art => {
+                    const tr = document.createElement('tr');
+                    tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+
+                    tr.innerHTML = `
+                        <td style="padding: 0.75rem; word-break: break-all; font-size: 0.9rem;">${art.path}</td>
+                        <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--accent-color);">${art.sha256.substring(0, 16)}...</td>
+                        <td style="padding: 0.75rem;">
+                            <button class="btn btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;" onclick="quoteArtifact('${art.path}')">Quote</button>
+                        </td>
+                    `;
+                    tableBody.appendChild(tr);
+                });
+
+                const totalPages = Math.ceil(data.total / data.limit);
+                pageInfo.innerText = `Page ${data.page} of ${totalPages} (${data.total} total)`;
+
+                prevBtn.disabled = currentPage === 1;
+                nextBtn.disabled = currentPage >= totalPages;
+            });
+    }
+
+    function quoteArtifact(path) {
+        alert("Quote action triggered for: " + path + "\n\n(This will be implemented in Issue #4: Automated subset extraction)");
+    }
+
+    function renderReport() {
+        const reportTableBody = document.getElementById('report-table-body');
+        const tabCount = document.getElementById('report-tab-count');
+        tabCount.innerText = quotedExhibits.length;
+
+        if (quotedExhibits.length === 0) {
+            reportTableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No exhibits quoted yet. <a href="#" onclick="switchTab('explorer'); return false;" style="color: var(--accent-color); text-decoration: underline;">Use the Artifact Explorer</a> to add exhibits to this report.</td></tr>`;
+            return;
+        }
+
+        reportTableBody.innerHTML = "";
+        quotedExhibits.forEach((exhibit, index) => {
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+
+            const prefix = exhibit.sha256.substring(0, 8);
+            const exhibitName = `${prefix}_${exhibit.name}`;
+
+            tr.innerHTML = `
+                <td style="padding: 0.75rem; font-weight: 600; color: var(--accent-color); font-size: 0.9rem; word-break: break-all;">${exhibitName}</td>
+                <td style="padding: 0.75rem; font-size: 0.9rem; word-break: break-all;">${exhibit.path}</td>
+                <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--text-secondary); word-break: break-all;">${exhibit.sha256}</td>
+                <td style="padding: 0.75rem;">
+                    <button class="btn" style="padding: 0.25rem 0.75rem; font-size: 0.8rem; background: #ef4444; border: none; border-radius: 4px; color: white; cursor: pointer;" onclick="removeQuote(${index})">Remove</button>
+                </td>
+            `;
+            reportTableBody.appendChild(tr);
+        });
+    }
+
+    window.removeQuote = function(index) {
+        quotedExhibits.splice(index, 1);
+        renderReport();
+    }
+
+    // Initial load
+    loadArtifacts();
+    renderReport();
+</script>
+{{end}}

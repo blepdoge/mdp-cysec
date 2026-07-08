@@ -13,13 +13,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/user/mdp-cysec/internal/models"
+	"mdp-cysec/internal/models"
 )
 
 type Hasher struct {
 	RootDir string
 }
 
+// NewHasher creates and returns a new Hasher instance with the given RootDir.
 func NewHasher(rootDir string) *Hasher {
 	return &Hasher{RootDir: rootDir}
 }
@@ -125,6 +126,8 @@ func (h *Hasher) GenerateManifest(progressChan chan<- int) (*models.MasterManife
 	return manifest, nil
 }
 
+// hashFile opens a file, computes its SHA256, SHA1, and MD5 hashes in a single pass,
+// and returns a models.Artifact struct with the calculated hashes and relative path.
 func hashFile(rootDir, filePath string, info os.FileInfo) (models.Artifact, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
