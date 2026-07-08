@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -38,18 +37,7 @@ func (h *Hasher) GenerateManifest(progressChan chan<- int) (*models.MasterManife
 		if err != nil {
 			return nil // ignore errors like permissions for now
 		}
-		if info.IsDir() {
-			name := info.Name()
-			if name == "exhibits" || name == "exports" || name == ".git" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
 		if info.Type().IsRegular() {
-			name := info.Name()
-			if name == "master_manifest.json" || name == "report_manifest.json" || (strings.HasPrefix(name, "manifest_") && strings.HasSuffix(name, ".json")) {
-				return nil // skip manifest files
-			}
 			files = append(files, path)
 		}
 		return nil
