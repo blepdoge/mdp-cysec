@@ -52,8 +52,18 @@
         </div>
     </div>
 
-    <!-- Main Grid: Explorer & Report View -->
-    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; align-items: start; margin-top: 1.5rem;">
+    <!-- Tabs Navigation -->
+    <div style="display: flex; gap: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); margin-top: 1.5rem; margin-bottom: 1.5rem;">
+        <button id="tab-explorer-btn" class="btn" style="background: none; border: none; border-bottom: 3px solid var(--accent-color); border-radius: 0; color: var(--text-primary); padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-family: var(--font-family); font-size: 1rem; transition: all 0.2s;">
+            🔍 Artifact Explorer
+        </button>
+        <button id="tab-report-btn" class="btn" style="background: none; border: none; border-bottom: 3px solid transparent; border-radius: 0; color: var(--text-secondary); padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-family: var(--font-family); font-size: 1rem; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem;">
+            📋 Report Exhibits <span id="report-tab-count" style="font-size: 0.75rem; background: rgba(255,255,255,0.15); color: var(--text-primary); padding: 0.1rem 0.5rem; border-radius: 10px;">0</span>
+        </button>
+    </div>
+
+    <!-- Tab Contents -->
+    <div id="explorer-tab-content">
         <!-- Explorer -->
         <div class="artifact-explorer">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem; flex-wrap: wrap;">
@@ -84,15 +94,29 @@
                 </div>
             </div>
         </div>
+    </div>
 
+    <div id="report-tab-content" style="display: none;">
         <!-- Report View (Frontend Mock) -->
-        <div class="report-view" style="background: rgba(0,0,0,0.2); padding: 1.5rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); min-width: 250px;">
-            <h3 style="font-size: 1.2rem; margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
-                <span>Report exhibits</span>
-                <span id="report-count" style="font-size: 0.85rem; color: var(--text-secondary); background: rgba(255,255,255,0.1); padding: 0.1rem 0.5rem; border-radius: 10px;">0</span>
+        <div class="report-view">
+            <h3 style="font-size: 1.2rem; margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">
+                Report exhibits
             </h3>
-            <div id="report-items" style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem;">
-                <!-- Populated via JS -->
+            
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Exhibit Name</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Original Path</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">SHA256</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary); width: 100px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="report-table-body">
+                        <!-- Populated via JS -->
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -109,6 +133,34 @@
     const prevBtn = document.getElementById('prev-btn');
     const nextBtn = document.getElementById('next-btn');
     const pageInfo = document.getElementById('page-info');
+
+    const tabExplorerBtn = document.getElementById('tab-explorer-btn');
+    const tabReportBtn = document.getElementById('tab-report-btn');
+    const explorerTabContent = document.getElementById('explorer-tab-content');
+    const reportTabContent = document.getElementById('report-tab-content');
+
+    // Tab Switching Navigation
+    tabExplorerBtn.addEventListener('click', () => switchTab('explorer'));
+    tabReportBtn.addEventListener('click', () => switchTab('report'));
+
+    function switchTab(tab) {
+        if (tab === 'explorer') {
+            tabExplorerBtn.style.borderBottomColor = 'var(--accent-color)';
+            tabExplorerBtn.style.color = 'var(--text-primary)';
+            tabReportBtn.style.borderBottomColor = 'transparent';
+            tabReportBtn.style.color = 'var(--text-secondary)';
+            explorerTabContent.style.display = 'block';
+            reportTabContent.style.display = 'none';
+        } else {
+            tabExplorerBtn.style.borderBottomColor = 'transparent';
+            tabExplorerBtn.style.color = 'var(--text-secondary)';
+            tabReportBtn.style.borderBottomColor = 'var(--accent-color)';
+            tabReportBtn.style.color = 'var(--text-primary)';
+            explorerTabContent.style.display = 'none';
+            reportTabContent.style.display = 'block';
+        }
+    }
+    window.switchTab = switchTab; // Expose globally for back links
 
     // Debounce search
     let searchTimeout;
@@ -182,8 +234,9 @@
         
         navigator.clipboard.writeText(clipText)
             .then(() => {
-                // Fulfill clipboard notification requirement
-                alert(`Exhibit Quoted!\nCopied details to clipboard for:\n${exhibitName}`);
+                if (confirm(`Exhibit Quoted!\nCopied details to clipboard for:\n${exhibitName}\n\nWould you like to view the Report Exhibits tab?`)) {
+                    switchTab('report');
+                }
             })
             .catch(err => {
                 console.error("Clipboard copy failed:", err);
@@ -197,48 +250,32 @@
     }
 
     function renderReport() {
-        const reportItems = document.getElementById('report-items');
-        const reportCount = document.getElementById('report-count');
-        reportCount.innerText = quotedExhibits.length;
+        const reportTableBody = document.getElementById('report-table-body');
+        const tabCount = document.getElementById('report-tab-count');
+        tabCount.innerText = quotedExhibits.length;
 
         if (quotedExhibits.length === 0) {
-            reportItems.innerHTML = `
-                <div style="color: var(--text-secondary); font-size: 0.9rem; text-align: center; padding: 2rem 0;">
-                    No exhibits quoted yet.
-                </div>`;
+            reportTableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No exhibits quoted yet. <a href="#" onclick="switchTab('explorer'); return false;" style="color: var(--accent-color); text-decoration: underline;">Use the Artifact Explorer</a> to add exhibits to this report.</td></tr>`;
             return;
         }
 
-        reportItems.innerHTML = "";
+        reportTableBody.innerHTML = "";
         quotedExhibits.forEach((exhibit, index) => {
-            const div = document.createElement('div');
-            div.style.background = "rgba(255,255,255,0.03)";
-            div.style.border = "1px solid rgba(255,255,255,0.05)";
-            div.style.borderRadius = "8px";
-            div.style.padding = "0.75rem";
-            div.style.display = "flex";
-            div.style.flexDirection = "column";
-            div.style.gap = "0.25rem";
-            div.style.position = "relative";
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
 
             const prefix = exhibit.sha256.substring(0, 8);
             const exhibitName = `${prefix}_${exhibit.name}`;
 
-            div.innerHTML = `
-                <div style="font-weight: 600; font-size: 0.9rem; color: var(--accent-color); padding-right: 2rem; word-break: break-all;">
-                    ${exhibitName}
-                </div>
-                <div style="font-size: 0.75rem; color: var(--text-secondary); word-break: break-all;">
-                    Orig: ${exhibit.path}
-                </div>
-                <div style="font-size: 0.75rem; font-family: monospace; color: var(--text-secondary);">
-                    Hash: ${exhibit.sha256.substring(0, 16)}...
-                </div>
-                <button onclick="removeQuote(${index})" style="position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; color: #ef4444; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.1rem;" title="Remove exhibit">
-                    &times;
-                </button>
+            tr.innerHTML = `
+                <td style="padding: 0.75rem; font-weight: 600; color: var(--accent-color); font-size: 0.9rem; word-break: break-all;">${exhibitName}</td>
+                <td style="padding: 0.75rem; font-size: 0.9rem; word-break: break-all;">${exhibit.path}</td>
+                <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--text-secondary); word-break: break-all;">${exhibit.sha256}</td>
+                <td style="padding: 0.75rem;">
+                    <button class="btn" style="padding: 0.25rem 0.75rem; font-size: 0.8rem; background: #ef4444; border: none; border-radius: 4px; color: white; cursor: pointer;" onclick="removeQuote(${index})">Remove</button>
+                </td>
             `;
-            reportItems.appendChild(div);
+            reportTableBody.appendChild(tr);
         });
     }
 
