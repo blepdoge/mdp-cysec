@@ -35,6 +35,8 @@ type Server struct {
 	hashingTotal    int
 }
 
+// NewServer initializes and returns a new Server instance. It sets up the router,
+// parses templates from the embedded assets filesystem, and registers the server routes.
 func NewServer(rootDir string) (*Server, error) {
 	s := &Server{
 		mux:       http.NewServeMux(),
@@ -53,10 +55,13 @@ func NewServer(rootDir string) (*Server, error) {
 	return s, nil
 }
 
+// ServeHTTP implements the http.Handler interface, dispatching incoming requests
+// to the registered server handlers.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
+// routes registers all webpage and API handlers for the Server.
 func (s *Server) routes() {
 	// Static assets
 	subFS, err := fs.Sub(Assets, "assets/static")
@@ -77,6 +82,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/dashboard", s.handleDashboard)
 }
 
+// handleIndex serves the root index page of the web application.
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -92,6 +98,9 @@ type StartRequest struct {
 	Directory string `json:"directory"`
 }
 
+// handleStart begins the asynchronous concurrent hashing of the target directory.
+// It initializes progress tracking state and launches background goroutines to hash
+// the files and broadcast updates.
 func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -158,6 +167,8 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
 }
 
+// broadcastSSE sends an SSE message to all connected clients. It utilizes non-blocking
+// sends to prevent deadlocks from slow or disconnected clients.
 func (s *Server) broadcastSSE(msg string) {
 	s.clientsMu.Lock()
 	defer s.clientsMu.Unlock()
@@ -170,6 +181,8 @@ func (s *Server) broadcastSSE(msg string) {
 	}
 }
 
+// handleProgressSSE serves the Server-Sent Events (SSE) streaming endpoint. It streams
+// real-time file processing counts and completion events to the web interface.
 func (s *Server) handleProgressSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -232,6 +245,8 @@ type FileEntry struct {
 	IsDir bool   `json:"is_dir"`
 }
 
+// handleExplore lists the contents of the requested directory for the folder navigation explorer UI.
+// On Windows, if the path is empty, it returns the logical drive letters.
 func (s *Server) handleExplore(w http.ResponseWriter, r *http.Request) {
 	dir := r.URL.Query().Get("dir")
 	if dir == "" || dir == "This PC" {
@@ -310,6 +325,7 @@ func (s *Server) handleExplore(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleDashboard serves the HTML dashboard page showing stats and the artifact explorer.
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	if s.currentManifest == nil {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -324,6 +340,8 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleArtifacts provides a paginated and searchable JSON endpoint of all case artifacts
+// stored in the loaded manifest.
 func (s *Server) handleArtifacts(w http.ResponseWriter, r *http.Request) {
 	if s.currentManifest == nil {
 		http.Error(w, "No manifest loaded", http.StatusBadRequest)
@@ -370,6 +388,8 @@ func (s *Server) handleArtifacts(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleImport accepts a POST file upload containing a manifest JSON file, validates its
+// structure, saves it to a unique file locally, and loads it as the active manifest.
 func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
