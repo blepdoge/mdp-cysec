@@ -18,16 +18,16 @@
 
     <div id="init-container">
         <h2 style="text-align: center; margin-bottom: 2rem; font-size: 1.5rem; color: var(--text-primary);">Welcome to Evidence integrity manager</h2>
-        
+
         <div class="choice-grid">
             <!-- Choice 1: Start New Case -->
             <div class="choice-card" id="start-new-card">
                 <div class="choice-icon">📁</div>
                 <h3>Start a new case</h3>
-                <p>Hash and verify a raw evidence directory on your local disk from scratch.</p>
-                <button id="browse-btn" class="btn" style="margin-top: 1rem;">Browse local files</button>
+                <p>Hash and verify a raw evidence directory on your disk.</p>
+                <button id="browse-btn" class="btn" style="margin-top: 1rem;">Browse files</button>
             </div>
-            
+
             <!-- Choice 2: Import Existing Case -->
             <div class="choice-card" id="import-case-card">
                 <div class="choice-icon">📥</div>
@@ -43,7 +43,7 @@
     <div id="explorer-container" style="display: none;">
         <h2 style="margin-bottom: 1rem; font-size: 1.2rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">Select evidence directory</h2>
         <div style="margin-bottom: 1rem; font-family: monospace; color: var(--accent-color); background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 4px;" id="current-dir"></div>
-        
+
         <div id="folder-list" class="folder-list">
             <!-- Populated via JS -->
         </div>
@@ -106,7 +106,7 @@
             .then(data => {
                 selectedPath = data.current_dir;
                 document.getElementById('current-dir').innerText = data.current_dir;
-                
+
                 const confirmBtn = document.getElementById('confirm-btn');
                 if (!selectedPath || selectedPath === "This PC") {
                     confirmBtn.disabled = true;
@@ -117,7 +117,7 @@
                     confirmBtn.style.opacity = "1";
                     confirmBtn.style.cursor = "pointer";
                 }
-                
+
                 const list = document.getElementById('folder-list');
                 list.innerHTML = "";
                 data.entries.forEach(entry => {
@@ -137,8 +137,8 @@
     document.getElementById('confirm-btn').addEventListener('click', () => {
         document.getElementById('explorer-container').style.display = 'none';
         document.getElementById('status-container').style.display = 'block';
-        
-        fetch("/api/start", { 
+
+        fetch("/api/start", {
             method: "POST",
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ directory: selectedPath })
@@ -170,7 +170,7 @@
                 const pBar = document.getElementById('progress-bar');
                 pBar.style.animation = 'none';
                 pBar.style.background = 'var(--success-color)';
-                
+
                 // Redirect to dashboard after 1 second
                 setTimeout(() => {
                     window.location.href = "/dashboard";

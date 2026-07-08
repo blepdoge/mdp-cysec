@@ -9,7 +9,7 @@
                 <a href="/" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">← Back to home</a>
             </div>
         </div>
-        
+
         <!-- Case Metadata Placeholders -->
         <div style="margin-top: 1rem; background: rgba(0,0,0,0.25); padding: 1rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
             <div>
@@ -58,10 +58,10 @@
     <!-- Tabs Navigation -->
     <div style="display: flex; gap: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); margin-top: 1.5rem; margin-bottom: 1.5rem;">
         <button id="tab-explorer-btn" class="btn" style="background: none; border: none; border-bottom: 3px solid var(--accent-color); border-radius: 0; color: var(--text-primary); padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-family: var(--font-family); font-size: 1rem; transition: all 0.2s;">
-            🔍 Artifact Explorer
+            🔍 Artifact explorer
         </button>
         <button id="tab-report-btn" class="btn" style="background: none; border: none; border-bottom: 3px solid transparent; border-radius: 0; color: var(--text-secondary); padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-family: var(--font-family); font-size: 1rem; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem;">
-            📋 Report Exhibits <span id="report-tab-count" style="font-size: 0.75rem; background: rgba(255,255,255,0.15); color: var(--text-primary); padding: 0.1rem 0.5rem; border-radius: 10px;">0</span>
+            📋 Report exhibits <span id="report-tab-count" style="font-size: 0.75rem; background: rgba(255,255,255,0.15); color: var(--text-primary); padding: 0.1rem 0.5rem; border-radius: 10px;">0</span>
         </button>
     </div>
 
@@ -105,13 +105,13 @@
             <h3 style="font-size: 1.2rem; margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">
                 Report exhibits
             </h3>
-            
+
             <div style="overflow-x: auto;">
                 <table style="width: 100%; border-collapse: collapse; text-align: left;">
                     <thead>
                         <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
-                            <th style="padding: 0.75rem; color: var(--text-secondary);">Exhibit Name</th>
-                            <th style="padding: 0.75rem; color: var(--text-secondary);">Original Path</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Exhibit name</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Original path</th>
                             <th style="padding: 0.75rem; color: var(--text-secondary);">SHA256</th>
                             <th style="padding: 0.75rem; color: var(--text-secondary); width: 100px;">Actions</th>
                         </tr>
@@ -190,13 +190,13 @@
 
     function loadArtifacts() {
         const url = `/api/artifacts?page=${currentPage}&q=${encodeURIComponent(currentQuery)}`;
-        
+
         fetch(url)
             .then(res => res.json())
             .then(data => {
                 tableBody.innerHTML = "";
                 loadedArtifacts = data.artifacts || [];
-                
+
                 if (loadedArtifacts.length === 0) {
                     tableBody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No artifacts found.</td></tr>`;
                     pageInfo.innerText = "0 results";
@@ -207,7 +207,7 @@
                 loadedArtifacts.forEach(art => {
                     const tr = document.createElement('tr');
                     tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
-                    
+
                     tr.innerHTML = `
                         <td style="padding: 0.75rem; word-break: break-all; font-size: 0.9rem;">${art.path}</td>
                         <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--accent-color);">${art.sha256.substring(0, 16)}...</td>
@@ -220,7 +220,7 @@
 
                 const totalPages = Math.ceil(data.total / data.limit);
                 pageInfo.innerText = `Page ${data.page} of ${totalPages} (${data.total} total)`;
-                
+
                 prevBtn.disabled = currentPage === 1;
                 nextBtn.disabled = currentPage >= totalPages;
             });
