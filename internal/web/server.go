@@ -15,14 +15,17 @@ import (
 	"time"
 
 	"mdp-cysec/internal/hashing"
+	"mdp-cysec/internal/merkle"
 	"mdp-cysec/internal/models"
+	"mdp-cysec/internal/rfc3161"
 )
 
 type Server struct {
 	mux             *http.ServeMux
 	templates       *template.Template
 	rootDir         string
-	
+	tsa             *rfc3161.Client
+
 	clients         map[chan string]bool
 	clientsMu       sync.Mutex
 	currentManifest *models.MasterManifest
@@ -36,12 +39,17 @@ type Server struct {
 }
 
 // NewServer initializes and returns a new Server instance. It sets up the router,
-// parses templates from the embedded assets filesystem, and registers the server routes.
-func NewServer(rootDir string) (*Server, error) {
+// parses templates from the embedded assets filesystem, and registers the server
+// routes. tsaURL points to the RFC 3161 timestamping authority; an empty string
+// disables timestamping.
+func NewServer(rootDir, tsaURL string) (*Server, error) {
 	s := &Server{
 		mux:       http.NewServeMux(),
 		rootDir:   rootDir,
 		clients:   make(map[chan string]bool),
+	}
+	if tsaURL != "" {
+		s.tsa = rfc3161.NewClient(tsaURL)
 	}
 
 	// Parse templates from embedded FS
@@ -142,6 +150,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		
 		timestamp := time.Now().Format("20060102_150405")
 		filename := fmt.Sprintf("manifest_%s.json", timestamp)
+		s.sealManifest(manifest, timestamp)
 		manifest.SaveToFile(filename)
 		s.currentManifest = manifest
 		
@@ -165,6 +174,41 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
+}
+
+// sealManifest computes the Merkle root over the completed manifest and, when
+// a TSA is configured, obtains an RFC 3161 attestation of that root, saving
+// the token next to the manifest (issue #3). Timestamping is best-effort: the
+// tool is local-first, so a network failure must not prevent the case from
+// being saved.
+func (s *Server) sealManifest(manifest *models.MasterManifest, timestamp string) {
+	if len(manifest.Artifacts) == 0 {
+		return
+	}
+
+	tree, err := merkle.FromManifest(manifest)
+	if err != nil {
+		fmt.Printf("Merkle tree error: %v\n", err)
+		return
+	}
+	manifest.CaseMetadata.CaseRootHash = tree.RootHex()
+
+	if s.tsa == nil {
+		return
+	}
+	token, info, err := s.tsa.Request(tree.Root())
+	if err != nil {
+		fmt.Printf("RFC 3161 timestamping failed (manifest saved without attestation): %v\n", err)
+		return
+	}
+	tokenPath := fmt.Sprintf("manifest_%s.tsr", timestamp)
+	if err := os.WriteFile(tokenPath, token, 0644); err != nil {
+		fmt.Printf("Failed to save timestamp token: %v\n", err)
+		return
+	}
+	manifest.CaseMetadata.RFC3161TokenPath = tokenPath
+	fmt.Printf("Case root hash attested by TSA at %s (serial %s)\n",
+		info.GenTime.UTC().Format(time.RFC3339), info.SerialNumber)
 }
 
 // broadcastSSE sends an SSE message to all connected clients. It utilizes non-blocking

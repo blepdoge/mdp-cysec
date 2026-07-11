@@ -27,6 +27,11 @@ The project currently has two major milestones completed on the `main` branch:
 - **Back-and-Forth Navigation**: Features seamless transitions between tabs, prompting users to view exhibits after quoting, or return to the explorer when the report is empty.
 - **Merkle & RFC Placeholders**: Includes visual zones prepared for future Merkle root hashing and RFC 3161 timestamping integrations.
 
+### 5. Merkle Root & RFC 3161 Timestamping (Issue #3)
+- **Binary Merkle tree**: Native Go implementation over the artifact SHA256 hashes. Odd node counts duplicate the last node against itself (Bitcoin-style). The root is stored as `case_root_hash` in the manifest.
+- **Canonical artifact ordering**: Artifacts are sorted by file name (path as tie-breaker) before the manifest is written, so the same evidence set always produces the same Merkle root.
+- **RFC 3161 attestation**: The Merkle root is sent to a timestamping authority (default: `https://freetsa.org/tsr`, configurable via the `-tsa` flag) and the returned token is saved as `manifest_<timestamp>.tsr` next to the manifest. Implemented with `encoding/asn1` only — no external dependencies. Timestamping is best-effort: if the TSA is unreachable, the manifest is still saved (local-first).
+
 ## How to run locally
 
 1. Run the application via the CLI:
