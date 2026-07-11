@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -115,6 +117,17 @@ func (h *Hasher) GenerateManifest(progressChan chan<- int) (*models.MasterManife
 	if progressChan != nil {
 		close(progressChan)
 	}
+
+	// The worker pool collects artifacts in nondeterministic order. A canonical
+	// ordering is required so the manifest (and the Merkle root derived from it)
+	// is reproducible across runs. Sort by name, with path as tie-breaker since
+	// names are not unique.
+	slices.SortFunc(artifacts, func(a, b models.Artifact) int {
+		if c := strings.Compare(a.Name, b.Name); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Path, b.Path)
+	})
 
 	now := time.Now().UTC()
 	manifest.Artifacts = artifacts
