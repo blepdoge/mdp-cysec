@@ -100,7 +100,7 @@
     });
 
     function loadDirectory(path) {
-        const url = path ? `/api/explore?dir=${encodeURIComponent(path)}` : `/api/explore`;
+        const url = path ? `/api/explore?dir=${encodeURIComponent(path)}` : '/api/explore';
         fetch(url)
             .then(res => res.json())
             .then(data => {
@@ -129,7 +129,7 @@
                 });
             })
             .catch(err => {
-                alert("Failed to read directory. " + err);
+                alert(`Failed to read directory. ${err}`);
                 loadDirectory(selectedPath); // revert
             });
     }
@@ -160,8 +160,7 @@
             const data = JSON.parse(event.data);
             const count = data.processed;
 
-            document.getElementById("status-text").innerText =
-                `Processed files... (${count})`;
+            document.getElementById("status-text").innerText = `Processed files... (${count})`;
             document.getElementById("status-text").classList.remove("pulsing");
 
             if (data.done) {
