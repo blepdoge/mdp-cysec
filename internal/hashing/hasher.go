@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
@@ -51,7 +52,9 @@ func (h *Hasher) GenerateManifest(progressChan chan<- int) (*models.MasterManife
 	if totalFiles == 0 {
 		now := time.Now().UTC()
 		manifest.CaseMetadata = models.CaseMetadata{
+			ManifestVersion:   "1.0",
 			TotalArtifacts:    0,
+			SourcePath:        h.RootDir,
 			CreationTimestamp: &now,
 		}
 		if progressChan != nil {
@@ -117,9 +120,22 @@ func (h *Hasher) GenerateManifest(progressChan chan<- int) (*models.MasterManife
 	}
 
 	now := time.Now().UTC()
+	sort.Slice(artifacts, func(i, j int) bool {
+		return artifacts[i].Path < artifacts[j].Path
+	})
+
+	var totalBytes int64
+	for _, art := range artifacts {
+		totalBytes += art.SizeBytes
+	}
+
 	manifest.Artifacts = artifacts
 	manifest.CaseMetadata = models.CaseMetadata{
+		ManifestVersion:   "1.0",
+		CaseRootHash:      calculateMerkleRoot(artifacts),
 		TotalArtifacts:    len(artifacts),
+		TotalBytes:        totalBytes,
+		SourcePath:        h.RootDir,
 		CreationTimestamp: &now,
 	}
 
@@ -149,12 +165,43 @@ func hashFile(rootDir, filePath string, info os.FileInfo) (models.Artifact, erro
 		return models.Artifact{}, err
 	}
 	relPath = filepath.ToSlash(relPath)
+	modifiedTime := info.ModTime().UTC()
 
 	return models.Artifact{
-		Name:   info.Name(),
-		Path:   "/" + relPath,
-		SHA256: hex.EncodeToString(hashSHA256.Sum(nil)),
-		SHA1:   hex.EncodeToString(hashSHA1.Sum(nil)),
-		MD5:    hex.EncodeToString(hashMD5.Sum(nil)),
+		Name:         info.Name(),
+		Path:         "/" + relPath,
+		SizeBytes:    info.Size(),
+		ModifiedTime: &modifiedTime,
+		SHA256:       hex.EncodeToString(hashSHA256.Sum(nil)),
+		SHA1:         hex.EncodeToString(hashSHA1.Sum(nil)),
+		MD5:          hex.EncodeToString(hashMD5.Sum(nil)),
 	}, nil
+}
+
+func calculateMerkleRoot(artifacts []models.Artifact) string {
+	if len(artifacts) == 0 {
+		return ""
+	}
+
+	level := make([]string, 0, len(artifacts))
+	for _, art := range artifacts {
+		sum := sha256.Sum256([]byte(art.Path + ":" + art.SHA256))
+		level = append(level, hex.EncodeToString(sum[:]))
+	}
+
+	for len(level) > 1 {
+		next := make([]string, 0, (len(level)+1)/2)
+		for i := 0; i < len(level); i += 2 {
+			left := level[i]
+			right := left
+			if i+1 < len(level) {
+				right = level[i+1]
+			}
+			sum := sha256.Sum256([]byte(left + right))
+			next = append(next, hex.EncodeToString(sum[:]))
+		}
+		level = next
+	}
+
+	return level[0]
 }

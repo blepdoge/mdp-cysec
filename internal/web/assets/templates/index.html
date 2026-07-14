@@ -1,52 +1,48 @@
 {{define "index_content"}}
 <div class="glass-panel">
     <div id="status-container" class="status-container" style="display: none">
-        <h2 style="margin-bottom: 1rem; font-size: 1.2rem">
-            Hashing in progress
-        </h2>
+        <h2 style="margin-bottom: 1rem; font-size: 1.2rem">Hashing in progress</h2>
         <div class="progress-container">
-            <div
-                id="progress-bar"
-                class="progress-bar"
-                style="width: 100%; animation: pulse 1s infinite"
-            ></div>
+            <div id="progress-bar" class="progress-bar" style="width: 100%; animation: pulse 1s infinite"></div>
         </div>
-        <div id="status-text" class="status-text pulsing">
-            Processing files...
-        </div>
+        <div id="status-text" class="status-text pulsing">Processing files...</div>
     </div>
 
     <div id="init-container">
-        <h2 style="text-align: center; margin-bottom: 2rem; font-size: 1.5rem; color: var(--text-primary);">Welcome to Evidence integrity manager</h2>
+        <h2 style="text-align: center; margin-bottom: 2rem; font-size: 1.5rem; color: var(--text-primary);">Evidence integrity manager</h2>
+
+        <div style="background: rgba(0,0,0,0.22); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
+            <h3 style="font-size: 1rem; margin-bottom: 0.75rem;">Case metadata</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;">
+                <input id="case-id-input" type="text" placeholder="Case ID" style="padding: 0.65rem 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white;">
+                <input id="case-name-input" type="text" placeholder="Case name" style="padding: 0.65rem 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white;">
+                <input id="analyst-input" type="text" placeholder="Analyst" style="padding: 0.65rem 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white;">
+            </div>
+        </div>
 
         <div class="choice-grid">
-            <!-- Choice 1: Start New Case -->
             <div class="choice-card" id="start-new-card">
-                <div class="choice-icon">📁</div>
+                <div class="choice-icon">DIR</div>
                 <h3>Start a new case</h3>
-                <p>Hash and verify a raw evidence directory on your disk.</p>
-                <button id="browse-btn" class="btn" style="margin-top: 1rem;">Browse files</button>
+                <p>Hash a raw evidence directory and create a master manifest.</p>
+                <button id="browse-btn" class="btn" style="margin-top: 1rem;">Browse folders</button>
             </div>
 
-            <!-- Choice 2: Import Existing Case -->
             <div class="choice-card" id="import-case-card">
-                <div class="choice-icon">📥</div>
+                <div class="choice-icon">JSON</div>
                 <h3>Import existing case</h3>
-                <p>Load an existing master manifest JSON to review a previously hashed case.</p>
+                <p>Load an existing master manifest JSON and verify a local folder against it.</p>
                 <button id="import-btn" class="btn btn-secondary" style="margin-top: 1rem;">Upload manifest</button>
                 <input type="file" id="import-file-input" accept=".json" style="display: none;">
             </div>
         </div>
     </div>
 
-    <!-- File Explorer UI -->
     <div id="explorer-container" style="display: none;">
         <h2 style="margin-bottom: 1rem; font-size: 1.2rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">Select evidence directory</h2>
         <div style="margin-bottom: 1rem; font-family: monospace; color: var(--accent-color); background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 4px;" id="current-dir"></div>
 
-        <div id="folder-list" class="folder-list">
-            <!-- Populated via JS -->
-        </div>
+        <div id="folder-list" class="folder-list"></div>
 
         <div style="margin-top: 1.5rem; display: flex; justify-content: space-between;">
             <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
@@ -61,7 +57,7 @@
     document.getElementById('browse-btn').addEventListener('click', () => {
         document.getElementById('init-container').style.display = 'none';
         document.getElementById('explorer-container').style.display = 'block';
-        loadDirectory(""); // load default
+        loadDirectory("");
     });
 
     document.getElementById('cancel-btn').addEventListener('click', () => {
@@ -90,7 +86,7 @@
                 window.location.href = '/dashboard';
             } else {
                 alert("Import failed: " + (data.error || "Invalid file format or server error"));
-                e.target.value = ''; // clear input
+                e.target.value = '';
             }
         })
         .catch(err => {
@@ -123,14 +119,14 @@
                 data.entries.forEach(entry => {
                     const div = document.createElement('div');
                     div.className = 'folder-item';
-                    div.innerHTML = `📁 ${entry.name}`;
+                    div.innerText = `[DIR] ${entry.name}`;
                     div.onclick = () => loadDirectory(entry.path);
                     list.appendChild(div);
                 });
             })
             .catch(err => {
                 alert("Failed to read directory. " + err);
-                loadDirectory(selectedPath); // revert
+                loadDirectory(selectedPath);
             });
     }
 
@@ -141,7 +137,12 @@
         fetch("/api/start", {
             method: "POST",
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ directory: selectedPath })
+            body: JSON.stringify({
+                directory: selectedPath,
+                case_id: document.getElementById('case-id-input').value,
+                case_name: document.getElementById('case-name-input').value,
+                analyst: document.getElementById('analyst-input').value
+            })
         })
         .then(res => res.json())
         .then(data => {
@@ -160,18 +161,16 @@
             const data = JSON.parse(event.data);
             const count = data.processed;
 
-            document.getElementById("status-text").innerText =
-                `Processed files... (${count})`;
+            document.getElementById("status-text").innerText = `Processed files... (${count})`;
             document.getElementById("status-text").classList.remove("pulsing");
 
             if (data.done) {
                 evtSource.close();
-                document.getElementById('status-text').innerText = `Completed! Total artifacts: ${count}`;
+                document.getElementById('status-text').innerText = `Completed. Total artifacts: ${count}`;
                 const pBar = document.getElementById('progress-bar');
                 pBar.style.animation = 'none';
                 pBar.style.background = 'var(--success-color)';
 
-                // Redirect to dashboard after 1 second
                 setTimeout(() => {
                     window.location.href = "/dashboard";
                 }, 1000);

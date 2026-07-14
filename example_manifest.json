@@ -1,0 +1,32 @@
+{
+  "case_metadata": {
+    "manifest_version": "1.0",
+    "case_id": "DEMO-001",
+    "case_name": "Sample integrity case",
+    "analyst": "MDPCYSEC",
+    "source_path": "D:\\MDPCYSEC\\testdata\\sample_case",
+    "case_root_hash": "472cc4147ff801904c4d59de88a0706104792e72ccf7e76b49eb705d7df11da9",
+    "total_artifacts": 2,
+    "total_bytes": 162,
+    "creation_timestamp": "2026-07-10T20:55:00Z",
+    "rfc3161_token_path": ""
+  },
+  "artifacts": [
+    {
+      "name": "evidence_note.txt",
+      "path": "/evidence_note.txt",
+      "size_bytes": 67,
+      "sha256": "1405ccfc5aa5e481e0352559a525d3b69f2b07a93bb41f4a9a8b040983a32be8",
+      "sha1": "e91ef919a09fb1b0ab9390eb2f0862dcb8a93a66",
+      "md5": "1a873d335919b0f6434c526e34f3b32f"
+    },
+    {
+      "name": "system.log",
+      "path": "/logs/system.log",
+      "size_bytes": 95,
+      "sha256": "54435c9965a2ba5b2c74c08f2ae0584f1d3cb1bb5c6a7def8b6c54f9745515e9",
+      "sha1": "c7d6b7cfbe129c4b0fa21a475f4f558c1f0e1675",
+      "md5": "6b14ffbbc3e7a3b4b5b0903fb9c87b54"
+    }
+  ]
+}

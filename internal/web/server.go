@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -26,6 +27,8 @@ type Server struct {
 	clients         map[chan string]bool
 	clientsMu       sync.Mutex
 	currentManifest *models.MasterManifest
+	currentRootDir  string
+	lastVerification *VerificationResult
 
 	// Thread-safe state tracking for hashing progress
 	stateMu         sync.Mutex
@@ -79,6 +82,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/explore", s.handleExplore)
 	s.mux.HandleFunc("/api/artifacts", s.handleArtifacts)
 	s.mux.HandleFunc("/api/import", s.handleImport)
+	s.mux.HandleFunc("/api/verify", s.handleVerify)
+	s.mux.HandleFunc("/api/export/manifest", s.handleExportManifest)
+	s.mux.HandleFunc("/api/export/report.json", s.handleExportReportJSON)
+	s.mux.HandleFunc("/api/export/report.html", s.handleExportReportHTML)
 	s.mux.HandleFunc("/dashboard", s.handleDashboard)
 }
 
@@ -96,6 +103,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 type StartRequest struct {
 	Directory string `json:"directory"`
+	CaseID    string `json:"case_id"`
+	CaseName  string `json:"case_name"`
+	Analyst   string `json:"analyst"`
 }
 
 // handleStart begins the asynchronous concurrent hashing of the target directory.
@@ -113,9 +123,9 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetDir := req.Directory
+	targetDir := normalizeLocalPath(req.Directory)
 	if targetDir == "" {
-		targetDir = s.rootDir // fallback
+		targetDir = normalizeLocalPath(s.rootDir) // fallback
 	}
 
 	// Update hashing state thread-safely
@@ -139,11 +149,16 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 			s.stateMu.Unlock()
 			return
 		}
+		manifest.CaseMetadata.CaseID = strings.TrimSpace(req.CaseID)
+		manifest.CaseMetadata.CaseName = strings.TrimSpace(req.CaseName)
+		manifest.CaseMetadata.Analyst = strings.TrimSpace(req.Analyst)
 		
 		timestamp := time.Now().Format("20060102_150405")
 		filename := fmt.Sprintf("manifest_%s.json", timestamp)
 		manifest.SaveToFile(filename)
 		s.currentManifest = manifest
+		s.currentRootDir = targetDir
+		s.lastVerification = nil
 		
 		s.stateMu.Lock()
 		s.hashingActive = false
@@ -425,7 +440,299 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.currentManifest = &manifest
+	s.currentRootDir = ""
+	s.lastVerification = nil
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
+type VerificationResult struct {
+	Verified      int                  `json:"verified"`
+	Missing       int                  `json:"missing"`
+	Modified      int                  `json:"modified"`
+	Extra         int                  `json:"extra"`
+	TotalExpected int                  `json:"total_expected"`
+	TotalCurrent  int                  `json:"total_current"`
+	Directory     string               `json:"directory"`
+	Details       []VerificationDetail `json:"details"`
+	VerifiedAt    *time.Time           `json:"verified_at,omitempty"`
+}
+
+type VerificationDetail struct {
+	Status         string `json:"status"`
+	Path           string `json:"path"`
+	ExpectedSHA256 string `json:"expected_sha256,omitempty"`
+	ActualSHA256   string `json:"actual_sha256,omitempty"`
+}
+
+type VerifyRequest struct {
+	Directory string `json:"directory"`
+}
+
+// handleVerify re-hashes the original case directory and compares the result
+// against the loaded manifest.
+func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.currentManifest == nil {
+		http.Error(w, "No manifest loaded", http.StatusBadRequest)
+		return
+	}
+
+	var req VerifyRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+
+	targetDir := normalizeLocalPath(req.Directory)
+	if targetDir == "" {
+		targetDir = normalizeLocalPath(s.currentRootDir)
+	}
+
+	if targetDir == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "This manifest was imported. Enter the local evidence folder path to verify it against this manifest.",
+			"code":  "directory_required",
+		})
+		return
+	}
+
+	if info, err := os.Stat(targetDir); err != nil || !info.IsDir() {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Verification directory does not exist or is not a folder: " + targetDir,
+		})
+		return
+	}
+
+	hasher := hashing.NewHasher(targetDir)
+	freshManifest, err := hasher.GenerateManifest(nil)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	currentByPath := make(map[string]models.Artifact, len(freshManifest.Artifacts))
+	for _, art := range freshManifest.Artifacts {
+		currentByPath[art.Path] = art
+	}
+
+	expectedByPath := make(map[string]models.Artifact, len(s.currentManifest.Artifacts))
+	result := VerificationResult{
+		TotalExpected: len(s.currentManifest.Artifacts),
+		TotalCurrent:  len(freshManifest.Artifacts),
+		Directory:     targetDir,
+	}
+	for _, expected := range s.currentManifest.Artifacts {
+		expectedByPath[expected.Path] = expected
+
+		current, ok := currentByPath[expected.Path]
+		if !ok {
+			result.Missing++
+			result.Details = append(result.Details, VerificationDetail{
+				Status:         "missing",
+				Path:           expected.Path,
+				ExpectedSHA256: expected.SHA256,
+			})
+			continue
+		}
+
+		if current.SHA256 != expected.SHA256 || current.SHA1 != expected.SHA1 || current.MD5 != expected.MD5 {
+			result.Modified++
+			result.Details = append(result.Details, VerificationDetail{
+				Status:         "modified",
+				Path:           expected.Path,
+				ExpectedSHA256: expected.SHA256,
+				ActualSHA256:   current.SHA256,
+			})
+			continue
+		}
+
+		result.Verified++
+	}
+
+	for _, current := range freshManifest.Artifacts {
+		if _, ok := expectedByPath[current.Path]; !ok {
+			result.Extra++
+			result.Details = append(result.Details, VerificationDetail{
+				Status:       "extra",
+				Path:         current.Path,
+				ActualSHA256: current.SHA256,
+			})
+		}
+	}
+
+	now := time.Now().UTC()
+	result.VerifiedAt = &now
+	s.lastVerification = &result
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func normalizeLocalPath(path string) string {
+	path = strings.TrimSpace(path)
+	path = strings.Trim(path, "\"'")
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+
+	// Users often paste JSON-escaped Windows paths such as
+	// "D:\\Evidence\\Case001" into the verification field.
+	if runtime.GOOS == "windows" {
+		path = strings.ReplaceAll(path, `\\`, `\`)
+	}
+
+	return filepath.Clean(path)
+}
+
+func (s *Server) handleExportManifest(w http.ResponseWriter, r *http.Request) {
+	if s.currentManifest == nil {
+		http.Error(w, "No manifest loaded", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", `attachment; filename="master_manifest.json"`)
+	json.NewEncoder(w).Encode(s.currentManifest)
+}
+
+type IntegrityReport struct {
+	GeneratedAt   time.Time            `json:"generated_at"`
+	Manifest      *models.MasterManifest `json:"manifest"`
+	Verification  *VerificationResult  `json:"verification,omitempty"`
+	LoadedRootDir string               `json:"loaded_root_dir,omitempty"`
+}
+
+func (s *Server) buildReport() (*IntegrityReport, error) {
+	if s.currentManifest == nil {
+		return nil, fmt.Errorf("no manifest loaded")
+	}
+	return &IntegrityReport{
+		GeneratedAt:   time.Now().UTC(),
+		Manifest:      s.currentManifest,
+		Verification:  s.lastVerification,
+		LoadedRootDir: s.currentRootDir,
+	}, nil
+}
+
+func (s *Server) handleExportReportJSON(w http.ResponseWriter, r *http.Request) {
+	report, err := s.buildReport()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", `attachment; filename="integrity_report.json"`)
+	json.NewEncoder(w).Encode(report)
+}
+
+func (s *Server) handleExportReportHTML(w http.ResponseWriter, r *http.Request) {
+	report, err := s.buildReport()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	html, err := renderIntegrityReportHTML(report)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="integrity_report.html"`)
+	w.Write(html)
+}
+
+func renderIntegrityReportHTML(report *IntegrityReport) ([]byte, error) {
+	const reportTemplate = `<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>Integrity Report</title>
+	<style>
+		body { font-family: Arial, sans-serif; margin: 2rem; color: #111827; }
+		h1, h2 { color: #0f172a; }
+		.meta, table { width: 100%; border-collapse: collapse; margin: 1rem 0 2rem; }
+		td, th { border: 1px solid #d1d5db; padding: 0.5rem; text-align: left; vertical-align: top; }
+		th { background: #f3f4f6; }
+		code { font-family: Consolas, monospace; word-break: break-all; }
+		.ok { color: #047857; font-weight: 700; }
+		.warn { color: #b45309; font-weight: 700; }
+		.bad { color: #b91c1c; font-weight: 700; }
+	</style>
+</head>
+<body>
+	<h1>Evidence Integrity Report</h1>
+	<table class="meta">
+		<tr><th>Generated at</th><td>{{.GeneratedAt}}</td></tr>
+		<tr><th>Manifest version</th><td>{{.Manifest.CaseMetadata.ManifestVersion}}</td></tr>
+		<tr><th>Source path</th><td><code>{{.Manifest.CaseMetadata.SourcePath}}</code></td></tr>
+		<tr><th>Total artifacts</th><td>{{.Manifest.CaseMetadata.TotalArtifacts}}</td></tr>
+		<tr><th>Total bytes</th><td>{{.Manifest.CaseMetadata.TotalBytes}}</td></tr>
+		<tr><th>Merkle root</th><td><code>{{.Manifest.CaseMetadata.CaseRootHash}}</code></td></tr>
+	</table>
+
+	{{if .Verification}}
+	<h2>Verification Summary</h2>
+	<table>
+		<tr><th>Verified at</th><td>{{.Verification.VerifiedAt}}</td></tr>
+		<tr><th>Compared directory</th><td><code>{{.Verification.Directory}}</code></td></tr>
+		<tr><th>Verified</th><td class="ok">{{.Verification.Verified}}</td></tr>
+		<tr><th>Missing</th><td class="bad">{{.Verification.Missing}}</td></tr>
+		<tr><th>Modified</th><td class="warn">{{.Verification.Modified}}</td></tr>
+		<tr><th>Extra</th><td>{{.Verification.Extra}}</td></tr>
+	</table>
+
+	<h2>Verification Details</h2>
+	<table>
+		<thead><tr><th>Status</th><th>Path</th><th>Expected SHA256</th><th>Actual SHA256</th></tr></thead>
+		<tbody>
+		{{if .Verification.Details}}
+			{{range .Verification.Details}}
+			<tr><td>{{.Status}}</td><td><code>{{.Path}}</code></td><td><code>{{.ExpectedSHA256}}</code></td><td><code>{{.ActualSHA256}}</code></td></tr>
+			{{end}}
+		{{else}}
+			<tr><td colspan="4" class="ok">All manifest entries match the selected folder.</td></tr>
+		{{end}}
+		</tbody>
+	</table>
+	{{else}}
+	<p>No verification has been run during this session.</p>
+	{{end}}
+
+	<h2>Manifest Artifacts</h2>
+	<table>
+		<thead><tr><th>Path</th><th>Size</th><th>SHA256</th></tr></thead>
+		<tbody>
+			{{range .Manifest.Artifacts}}
+			<tr><td><code>{{.Path}}</code></td><td>{{.SizeBytes}}</td><td><code>{{.SHA256}}</code></td></tr>
+			{{end}}
+		</tbody>
+	</table>
+</body>
+</html>`
+
+	tmpl, err := template.New("report").Parse(reportTemplate)
+	if err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, report); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
