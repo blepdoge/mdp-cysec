@@ -53,6 +53,7 @@ func (h *Hasher) GenerateManifest(progressChan chan<- int) (*models.MasterManife
 		manifest.CaseMetadata = models.CaseMetadata{
 			TotalArtifacts:    0,
 			CreationTimestamp: &now,
+			EvidenceDirectory: h.RootDir,
 		}
 		if progressChan != nil {
 			close(progressChan)
@@ -121,6 +122,7 @@ func (h *Hasher) GenerateManifest(progressChan chan<- int) (*models.MasterManife
 	manifest.CaseMetadata = models.CaseMetadata{
 		TotalArtifacts:    len(artifacts),
 		CreationTimestamp: &now,
+		EvidenceDirectory: h.RootDir,
 	}
 
 	return manifest, nil

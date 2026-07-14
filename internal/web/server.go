@@ -443,6 +443,15 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 
 	s.currentManifest = &manifest
 
+	// Check if the original root directory is still accessible and set it
+	if manifest.CaseMetadata.EvidenceDirectory != "" {
+		if info, err := os.Stat(manifest.CaseMetadata.EvidenceDirectory); err == nil && info.IsDir() {
+			s.stateMu.Lock()
+			s.evidenceDir = manifest.CaseMetadata.EvidenceDirectory
+			s.stateMu.Unlock()
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }

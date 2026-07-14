@@ -11,6 +11,7 @@ type CaseMetadata struct {
 	TotalArtifacts    int        `json:"total_artifacts"`
 	CreationTimestamp *time.Time `json:"creation_timestamp,omitempty"`
 	RFC3161TokenPath  string     `json:"rfc3161_token_path,omitempty"`
+	EvidenceDirectory string     `json:"evidence_directory,omitempty"`
 }
 
 type Artifact struct {
