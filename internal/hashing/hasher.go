@@ -164,13 +164,10 @@ func hashFile(rootDir, filePath string, info os.FileInfo) (models.Artifact, erro
 		return models.Artifact{}, err
 	}
 	relPath = filepath.ToSlash(relPath)
-	modifiedTime := info.ModTime().UTC()
-
 	return models.Artifact{
 		Name:         info.Name(),
 		Path:         "/" + relPath,
 		SizeBytes:    info.Size(),
-		ModifiedTime: &modifiedTime,
 		SHA256:       hex.EncodeToString(hashSHA256.Sum(nil)),
 		SHA1:         hex.EncodeToString(hashSHA1.Sum(nil)),
 		MD5:          hex.EncodeToString(hashMD5.Sum(nil)),

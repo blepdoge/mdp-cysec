@@ -23,7 +23,6 @@ type Artifact struct {
 	Name         string     `json:"name"`
 	Path         string     `json:"path"`
 	SizeBytes    int64      `json:"size_bytes"`
-	ModifiedTime *time.Time `json:"modified_time,omitempty"`
 	SHA256       string     `json:"sha256"`
 	SHA1         string     `json:"sha1"`
 	MD5          string     `json:"md5"`
