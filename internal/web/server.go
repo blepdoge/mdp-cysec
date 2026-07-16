@@ -521,54 +521,74 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentByPath := make(map[string]models.Artifact, len(freshManifest.Artifacts))
+	unmatchedExpected := make([]models.Artifact, 0)
+	unmatchedCurrent := make(map[string]models.Artifact)
 	for _, art := range freshManifest.Artifacts {
-		currentByPath[art.Path] = art
+		unmatchedCurrent[art.Path] = art
 	}
 
-	expectedByPath := make(map[string]models.Artifact, len(s.currentManifest.Artifacts))
 	result := VerificationResult{
 		TotalExpected: len(s.currentManifest.Artifacts),
 		TotalCurrent:  len(freshManifest.Artifacts),
 		Directory:     targetDir,
 	}
-	for _, expected := range s.currentManifest.Artifacts {
-		expectedByPath[expected.Path] = expected
 
-		current, ok := currentByPath[expected.Path]
-		if !ok {
+	for _, expected := range s.currentManifest.Artifacts {
+		current, ok := unmatchedCurrent[expected.Path]
+		if ok {
+			if current.SHA256 != expected.SHA256 || current.SHA1 != expected.SHA1 || current.MD5 != expected.MD5 {
+				result.Modified++
+				result.Details = append(result.Details, VerificationDetail{
+					Status:         "modified",
+					Path:           expected.Path,
+					ExpectedSHA256: expected.SHA256,
+					ActualSHA256:   current.SHA256,
+				})
+			} else {
+				result.Verified++
+			}
+			delete(unmatchedCurrent, expected.Path)
+		} else {
+			unmatchedExpected = append(unmatchedExpected, expected)
+		}
+	}
+
+	currentByHash := make(map[string][]models.Artifact)
+	for _, current := range unmatchedCurrent {
+		currentByHash[current.SHA256] = append(currentByHash[current.SHA256], current)
+	}
+
+	for _, expected := range unmatchedExpected {
+		candidates, ok := currentByHash[expected.SHA256]
+		if ok && len(candidates) > 0 {
+			current := candidates[0]
+			currentByHash[expected.SHA256] = candidates[1:]
+			delete(unmatchedCurrent, current.Path)
+
+			result.Modified++
+			result.Details = append(result.Details, VerificationDetail{
+				Status:         "modified",
+				Path:           fmt.Sprintf("%s -> %s", expected.Path, current.Path),
+				ExpectedSHA256: expected.SHA256,
+				ActualSHA256:   current.SHA256,
+			})
+		} else {
 			result.Missing++
 			result.Details = append(result.Details, VerificationDetail{
 				Status:         "missing",
 				Path:           expected.Path,
 				ExpectedSHA256: expected.SHA256,
 			})
-			continue
 		}
-
-		if current.SHA256 != expected.SHA256 || current.SHA1 != expected.SHA1 || current.MD5 != expected.MD5 {
-			result.Modified++
-			result.Details = append(result.Details, VerificationDetail{
-				Status:         "modified",
-				Path:           expected.Path,
-				ExpectedSHA256: expected.SHA256,
-				ActualSHA256:   current.SHA256,
-			})
-			continue
-		}
-
-		result.Verified++
 	}
 
-	for _, current := range freshManifest.Artifacts {
-		if _, ok := expectedByPath[current.Path]; !ok {
-			result.Extra++
-			result.Details = append(result.Details, VerificationDetail{
-				Status:       "extra",
-				Path:         current.Path,
-				ActualSHA256: current.SHA256,
-			})
-		}
+	for _, current := range unmatchedCurrent {
+		result.Extra++
+		result.Details = append(result.Details, VerificationDetail{
+			Status:       "extra",
+			Path:         current.Path,
+			ActualSHA256: current.SHA256,
+		})
 	}
 
 	now := time.Now().UTC()
