@@ -537,7 +537,7 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 	for _, expected := range s.currentManifest.Artifacts {
 		current, ok := unmatchedCurrent[expected.Path]
 		if ok {
-			if current.SHA256 != expected.SHA256 || current.SHA1 != expected.SHA1 || current.MD5 != expected.MD5 {
+			if current.SHA256 != expected.SHA256 {
 				result.Modified++
 				result.Details = append(result.Details, VerificationDetail{
 					Status:         "modified",
