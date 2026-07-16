@@ -136,7 +136,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	s.hashingTotal = 0
 	s.stateMu.Unlock()
 
-	progressChan := make(chan int, 100)
+	progressChan := make(chan hashing.ProgressUpdate, 100)
 
 	go func() {
 		hasher := hashing.NewHasher(targetDir)
@@ -166,15 +166,16 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		s.hashingTotal = manifest.CaseMetadata.TotalArtifacts
 		s.stateMu.Unlock()
 		
-		s.broadcastSSE(fmt.Sprintf(`{"processed": %d, "done": true}`, manifest.CaseMetadata.TotalArtifacts))
+		s.broadcastSSE(fmt.Sprintf(`{"processed": %d, "total": %d, "done": true}`, manifest.CaseMetadata.TotalArtifacts, manifest.CaseMetadata.TotalArtifacts))
 	}()
 
 	go func() {
 		for progress := range progressChan {
 			s.stateMu.Lock()
-			s.hashingProgress = progress
+			s.hashingProgress = progress.Processed
+			s.hashingTotal = progress.Total
 			s.stateMu.Unlock()
-			s.broadcastSSE(fmt.Sprintf(`{"processed": %d, "done": false}`, progress))
+			s.broadcastSSE(fmt.Sprintf(`{"processed": %d, "total": %d, "done": false}`, progress.Processed, progress.Total))
 		}
 	}()
 
@@ -219,7 +220,7 @@ func (s *Server) handleProgressSSE(w http.ResponseWriter, r *http.Request) {
 	s.stateMu.Unlock()
 
 	if isDone {
-		fmt.Fprintf(w, "data: {\"processed\": %d, \"done\": true}\n\n", total)
+		fmt.Fprintf(w, "data: {\"processed\": %d, \"total\": %d, \"done\": true}\n\n", total, total)
 		flusher.Flush()
 		return
 	}
@@ -239,7 +240,7 @@ func (s *Server) handleProgressSSE(w http.ResponseWriter, r *http.Request) {
 
 	// Send current progress immediately if active
 	if isActive {
-		fmt.Fprintf(w, "data: {\"processed\": %d, \"done\": false}\n\n", progress)
+		fmt.Fprintf(w, "data: {\"processed\": %d, \"total\": %d, \"done\": false}\n\n", progress, total)
 		flusher.Flush()
 	}
 

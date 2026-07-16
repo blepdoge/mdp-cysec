@@ -156,18 +156,46 @@
 
     function connectSSE() {
         const evtSource = new EventSource("/api/progress");
+        const startTime = Date.now();
 
         evtSource.onmessage = function (event) {
             const data = JSON.parse(event.data);
             const count = data.processed;
+            const total = data.total;
 
-            document.getElementById("status-text").innerText = `Processed files... (${count})`;
+            const pBar = document.getElementById('progress-bar');
+            if (total && total > 0) {
+                const percent = Math.floor((count / total) * 100);
+                pBar.style.width = `${percent}%`;
+                pBar.style.animation = 'none';
+                
+                let etaText = "";
+                if (count > 0) {
+                    const elapsedSecs = (Date.now() - startTime) / 1000;
+                    const itemsPerSec = count / elapsedSecs;
+                    const remainingItems = total - count;
+                    const remainingSecs = Math.round(remainingItems / itemsPerSec);
+                    
+                    if (remainingSecs > 60) {
+                        const mins = Math.floor(remainingSecs / 60);
+                        const secs = remainingSecs % 60;
+                        etaText = ` - ETA: ${mins}m ${secs}s`;
+                    } else {
+                        etaText = ` - ETA: ${remainingSecs}s`;
+                    }
+                }
+                
+                document.getElementById("status-text").innerText = `Processed ${count} / ${total} (${percent}%)${etaText}`;
+            } else {
+                document.getElementById("status-text").innerText = `Processed files... (${count})`;
+            }
+
             document.getElementById("status-text").classList.remove("pulsing");
 
             if (data.done) {
                 evtSource.close();
                 document.getElementById('status-text').innerText = `Completed. Total artifacts: ${count}`;
-                const pBar = document.getElementById('progress-bar');
+                pBar.style.width = '100%';
                 pBar.style.animation = 'none';
                 pBar.style.background = 'var(--success-color)';
 
