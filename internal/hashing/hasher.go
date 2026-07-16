@@ -132,7 +132,6 @@ func (h *Hasher) GenerateManifest(progressChan chan<- int) (*models.MasterManife
 	manifest.Artifacts = artifacts
 	manifest.CaseMetadata = models.CaseMetadata{
 		ManifestVersion:   "1.0",
-		CaseRootHash:      calculateMerkleRoot(artifacts),
 		TotalArtifacts:    len(artifacts),
 		TotalBytes:        totalBytes,
 		SourcePath:        h.RootDir,
@@ -178,30 +177,3 @@ func hashFile(rootDir, filePath string, info os.FileInfo) (models.Artifact, erro
 	}, nil
 }
 
-func calculateMerkleRoot(artifacts []models.Artifact) string {
-	if len(artifacts) == 0 {
-		return ""
-	}
-
-	level := make([]string, 0, len(artifacts))
-	for _, art := range artifacts {
-		sum := sha256.Sum256([]byte(art.Path + ":" + art.SHA256))
-		level = append(level, hex.EncodeToString(sum[:]))
-	}
-
-	for len(level) > 1 {
-		next := make([]string, 0, (len(level)+1)/2)
-		for i := 0; i < len(level); i += 2 {
-			left := level[i]
-			right := left
-			if i+1 < len(level) {
-				right = level[i+1]
-			}
-			sum := sha256.Sum256([]byte(left + right))
-			next = append(next, hex.EncodeToString(sum[:]))
-		}
-		level = next
-	}
-
-	return level[0]
-}
