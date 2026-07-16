@@ -40,15 +40,24 @@ func (h *Hasher) GenerateManifest(progressChan chan<- ProgressUpdate) (*models.M
 	}
 
 	// Step 1: Gather all files
-	var files []string
-	err := filepath.WalkDir(h.RootDir, func(path string, info fs.DirEntry, err error) error {
-		if err != nil {
-			return nil // ignore errors like permissions for now
-		}
-		if info.Type().IsRegular() {
-			files = append(files, path)
-		}
-		return nil
+	type fileEntry struct {
+    	path string
+    	info fs.FileInfo
+	}
+
+	var files []fileEntry
+
+	err := filepath.WalkDir(h.RootDir, func(path string, d fs.DirEntry, err error) error {
+	    if err != nil || d == nil {
+	        return nil
+	    }
+	    if d.Type().IsRegular() {
+	        info, err := d.Info()
+	        if err == nil {
+	            files = append(files, fileEntry{path, info})
+	        }
+	    }
+	    return nil
 	})
 	if err != nil {
 		return nil, err
@@ -79,7 +88,7 @@ func (h *Hasher) GenerateManifest(progressChan chan<- ProgressUpdate) (*models.M
 	if bufferSize > 10000 {
 		bufferSize = 10000
 	}
-	jobs := make(chan string, bufferSize)
+	jobs := make(chan fileEntry, bufferSize)
 	resultsChan := make(chan models.Artifact, bufferSize)
 
 	var artifacts []models.Artifact
@@ -101,25 +110,20 @@ func (h *Hasher) GenerateManifest(progressChan chan<- ProgressUpdate) (*models.M
 
 	// Launch workers
 	for w := 1; w <= numWorkers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for path := range jobs {
-				// We need info for the artifact name
-				info, err := os.Stat(path)
-				if err != nil {
-					continue
-				}
-				if art, err := hashFile(h.RootDir, path, info); err == nil {
-					resultsChan <- art
-				}
-			}
-		}()
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        for entry := range jobs {
+            if art, err := hashFile(h.RootDir, entry.path, entry.info); err == nil {
+                resultsChan <- art
+            }
+        }
+    }()
 	}
 
 	// Feed jobs
-	for _, path := range files {
-		jobs <- path
+	for _, entry := range files {
+		jobs <- entry
 	}
 	close(jobs)
 
@@ -171,6 +175,14 @@ var hashersPool = sync.Pool{
 	},
 }
 
+// use 4mB buffer instead of default 32kb one, improve large file performance
+var bufPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 4*1024*1024) // 4MB
+		return &buf
+	},
+}
+
 // hashFile opens a file, computes its SHA256, SHA1, and MD5 hashes in a single pass,
 // and returns a models.Artifact struct with the calculated hashes and relative path.
 func hashFile(rootDir, filePath string, info os.FileInfo) (models.Artifact, error) {
@@ -188,8 +200,11 @@ func hashFile(rootDir, filePath string, info os.FileInfo) (models.Artifact, erro
 		hashersPool.Put(hs)
 	}()
 
+	buf := bufPool.Get().(*[]byte)
+	defer bufPool.Put(buf)
+
 	writer := io.MultiWriter(hs.md5, hs.sha1, hs.sha256)
-	if _, err := io.Copy(writer, f); err != nil {
+	if _, err := io.CopyBuffer(writer, f, *buf); err != nil {
 		return models.Artifact{}, err
 	}
 
@@ -198,13 +213,13 @@ func hashFile(rootDir, filePath string, info os.FileInfo) (models.Artifact, erro
 		return models.Artifact{}, err
 	}
 	relPath = filepath.ToSlash(relPath)
+
 	return models.Artifact{
-		Name:         info.Name(),
-		Path:         "/" + relPath,
-		SizeBytes:    info.Size(),
-		SHA256:       hex.EncodeToString(hs.sha256.Sum(nil)),
-		SHA1:         hex.EncodeToString(hs.sha1.Sum(nil)),
-		MD5:          hex.EncodeToString(hs.md5.Sum(nil)),
+		Name:      info.Name(),
+		Path:      "/" + relPath,
+		SizeBytes: info.Size(),
+		SHA256:    hex.EncodeToString(hs.sha256.Sum(nil)),
+		SHA1:      hex.EncodeToString(hs.sha1.Sum(nil)),
+		MD5:       hex.EncodeToString(hs.md5.Sum(nil)),
 	}, nil
 }
-
