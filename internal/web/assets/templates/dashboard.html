@@ -149,10 +149,11 @@
     let currentQuery = "";
     let loadedArtifacts = [];
     let quotedExhibits = [];
-    let exportDirectory = localStorage.getItem('quote-export-directory') || "";
+    let exportDirectory = normalizeExportDirectory(localStorage.getItem('quote-export-directory') || "");
     let pendingQuotePath = "";
     let pendingQuoteButton = null;
     let exportPickerSelectedPath = "";
+    const quotedExhibitsStorageKey = 'quoted-exhibits';
 
     const searchInput = document.getElementById('search-input');
     const tableBody = document.getElementById('artifact-table-body');
@@ -196,9 +197,39 @@
 
     function normalizeExportDirectory(path) {
         if (!path || path === "/" || path === "This PC") {
-            return "/private/tmp";
+            return "";
         }
         return path;
+    }
+
+    function persistQuotedExhibits() {
+        localStorage.setItem(quotedExhibitsStorageKey, JSON.stringify(quotedExhibits));
+    }
+
+    function hydrateQuotedExhibits() {
+        try {
+            const stored = localStorage.getItem(quotedExhibitsStorageKey);
+            if (!stored) {
+                return;
+            }
+
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+                quotedExhibits = parsed.filter(item =>
+                    item &&
+                    typeof item.original_path === 'string' &&
+                    typeof item.exhibit_name === 'string' &&
+                    typeof item.source_sha256 === 'string'
+                );
+            }
+        } catch (err) {
+            console.warn('Failed to restore quoted exhibits:', err);
+            quotedExhibits = [];
+        }
+    }
+
+    function hasExportDirectory() {
+        return Boolean(exportDirectory && exportDirectory !== "/" && exportDirectory !== "This PC");
     }
 
     exportCancelBtn.addEventListener('click', closeExportPicker);
@@ -275,6 +306,15 @@
         return path && path !== "This PC" && path !== "/";
     }
 
+    function quoteSelectedArtifact(path, button) {
+        if (hasExportDirectory()) {
+            quoteArtifact(path, button, exportDirectory);
+            return;
+        }
+
+        openExportPicker(path, button);
+    }
+
     function loadExportDirectory(path) {
         const url = path ? '/api/explore?dir=' + encodeURIComponent(path) : '/api/explore';
         exportCurrentDir.innerText = "Loading...";
@@ -344,12 +384,6 @@
                 });
             })
             .catch(err => {
-                if (path && path !== "/private/tmp" && path !== "/") {
-                    loadExportDirectory("/");
-                    setQuoteStatus('Selected folder could not be opened, falling back to filesystem root: ' + err.message, 'error');
-                    return;
-                }
-
                 exportCurrentDir.innerText = "Unable to load folders.";
                 exportFolderList.innerHTML = `<div style="padding: 0.85rem; color: #fca5a5;">Could not load folder list: ${err.message}</div>`;
                 setQuoteStatus(`Could not open export directory browser: ${err.message}`, 'error');
@@ -381,7 +415,7 @@
                         <td style="padding: 0.75rem; word-break: break-all; font-size: 0.9rem;">${art.path}</td>
                         <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--accent-color);">${art.sha256.substring(0, 16)}...</td>
                         <td style="padding: 0.75rem;">
-                            <button class="btn btn-secondary quote-btn" data-original-path="${encodedPath}" onclick="openExportPicker(decodeURIComponent(this.getAttribute('data-original-path')), this)" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Quote</button>
+                            <button class="btn btn-secondary quote-btn" data-original-path="${encodedPath}" onclick="quoteSelectedArtifact(decodeURIComponent(this.getAttribute('data-original-path')), this)" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Quote</button>
                         </td>
                     `;
                     tableBody.appendChild(tr);
@@ -450,6 +484,7 @@
                 integrity_verified: data.integrity_verified,
                 copied_path: data.copied_path
             });
+            persistQuotedExhibits();
             renderReport();
             switchTab('report');
             setQuoteStatus(
@@ -478,6 +513,10 @@
             const message = err.name === 'AbortError'
                 ? 'Quote request timed out after 90 seconds'
                 : err.message;
+            if (message.includes('export directory is not writable')) {
+                exportDirectory = "";
+                localStorage.removeItem('quote-export-directory');
+            }
             setQuoteStatus(`Quote failed: ${message}`, 'error');
             alert(`Quote failed: ${message}`);
         } finally {
@@ -521,10 +560,13 @@
 
     window.removeQuote = function(index) {
         quotedExhibits.splice(index, 1);
+        persistQuotedExhibits();
         renderReport();
     }
 
     // Initial load
+    hydrateQuotedExhibits();
+    exportDirectory = normalizeExportDirectory(localStorage.getItem('quote-export-directory') || "");
     loadArtifacts();
     renderReport();
 </script>

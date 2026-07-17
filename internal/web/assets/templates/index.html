@@ -87,6 +87,8 @@
         .then(async res => {
             const data = await res.json();
             if (res.ok && data.status === 'success') {
+                localStorage.removeItem('quoted-exhibits');
+                localStorage.removeItem('quote-export-directory');
                 window.location.href = '/dashboard';
             } else {
                 alert("Import failed: " + (data.error || "Invalid file format or server error"));
@@ -137,6 +139,8 @@
     document.getElementById('confirm-btn').addEventListener('click', () => {
         document.getElementById('explorer-container').style.display = 'none';
         document.getElementById('status-container').style.display = 'block';
+        localStorage.removeItem('quoted-exhibits');
+        localStorage.removeItem('quote-export-directory');
 
         fetch("/api/start", {
             method: "POST",
