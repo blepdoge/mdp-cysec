@@ -545,8 +545,7 @@ func (s *Server) handleQuote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("Quote request received: original_path=%s export_directory=%s
-", req.OriginalPath, req.ExportDirectory)
+	fmt.Printf("Quote request received: original_path=%s export_directory=%s\n", req.OriginalPath, req.ExportDirectory)
 	s.stateMu.Lock()
 	sourceRoot := s.evidenceDir
 	if sourceRoot == "" {
@@ -556,13 +555,11 @@ func (s *Server) handleQuote(w http.ResponseWriter, r *http.Request) {
 
 	result, err := exporting.QuoteArtifact(sourceRoot, req.OriginalPath, req.ExportDirectory, s.currentManifest)
 	if err != nil {
-		fmt.Printf("Quote request failed: %v
-", err)
+		fmt.Printf("Quote request failed: %v\n", err)
 		writeJSONError(http.StatusBadRequest, err.Error())
 		return
 	}
-	fmt.Printf("Quote request completed: exhibit_name=%s copied_path=%s
-", result.ExhibitName, result.CopiedPath)
+	fmt.Printf("Quote request completed: exhibit_name=%s copied_path=%s\n", result.ExhibitName, result.CopiedPath)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -574,6 +571,7 @@ func (s *Server) handleQuote(w http.ResponseWriter, r *http.Request) {
 		"copied_path":        result.CopiedPath,
 		"manifest_path":      result.ManifestPath,
 	})
+}
 
 type VerificationResult struct {
 	Verified      int                  `json:"verified"`

@@ -17,7 +17,6 @@ type CaseMetadata struct {
 	TotalBytes        int64      `json:"total_bytes"`
 	CreationTimestamp *time.Time `json:"creation_timestamp,omitempty"`
 	RFC3161TokenPath  string     `json:"rfc3161_token_path,omitempty"`
-	EvidenceDirectory string     `json:"evidence_directory,omitempty"`
 }
 
 type Artifact struct {
