@@ -700,7 +700,7 @@ func renderIntegrityReportHTML(report *IntegrityReport) ([]byte, error) {
 	<table class="meta">
 		<tr><th>Generated at</th><td>{{.GeneratedAt}}</td></tr>
 		<tr><th>Manifest version</th><td>{{.Manifest.CaseMetadata.ManifestVersion}}</td></tr>
-		<tr><th>Source path</th><td><code>{{.Manifest.CaseMetadata.SourcePath}}</code></td></tr>
+		<tr><th>Evidence directory</th><td><code>{{.Manifest.CaseMetadata.EvidenceDirectory}}</code></td></tr>
 		<tr><th>Total artifacts</th><td>{{.Manifest.CaseMetadata.TotalArtifacts}}</td></tr>
 		<tr><th>Total bytes</th><td>{{.Manifest.CaseMetadata.TotalBytes}}</td></tr>
 		<tr><th>Merkle root</th><td><code>{{.Manifest.CaseMetadata.CaseRootHash}}</code></td></tr>

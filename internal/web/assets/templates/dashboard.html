@@ -29,7 +29,7 @@
             <div>
                 <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">Source path</span>
                 <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary); word-break: break-all;">
-                    {{if .Manifest.CaseMetadata.SourcePath}}{{.Manifest.CaseMetadata.SourcePath}}{{else}}Not embedded in manifest{{end}}
+                    {{if .Manifest.CaseMetadata.EvidenceDirectory}}{{.Manifest.CaseMetadata.EvidenceDirectory}}{{else}}Not embedded in manifest{{end}}
                 </span>
             </div>
             <div>
@@ -55,7 +55,7 @@
         </div>
 
         <div style="margin-top: 1rem; display: grid; grid-template-columns: 1fr auto; gap: 0.75rem; align-items: center;">
-            <input id="verify-directory-input" type="text" placeholder="Verification folder path, e.g. D:\Evidence\Case001" value="{{.Manifest.CaseMetadata.SourcePath}}" style="padding: 0.65rem 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; min-width: 0;">
+            <input id="verify-directory-input" type="text" placeholder="Verification folder path, e.g. D:\Evidence\Case001" value="{{.Manifest.CaseMetadata.EvidenceDirectory}}" style="padding: 0.65rem 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; min-width: 0;">
             <button id="use-manifest-source-btn" class="btn btn-secondary" style="padding: 0.65rem 0.9rem;">Use manifest source</button>
         </div>
 
@@ -196,7 +196,7 @@
     const verifyBtn = document.getElementById('verify-btn');
     const verifyDirectoryInput = document.getElementById('verify-directory-input');
     const useManifestSourceBtn = document.getElementById('use-manifest-source-btn');
-    const manifestSourcePath = {{printf "%q" .Manifest.CaseMetadata.SourcePath}};
+    const manifestSourcePath = {{printf "%q" .Manifest.CaseMetadata.EvidenceDirectory}};
     const verificationPanel = document.getElementById('verification-panel');
     const verificationSummary = document.getElementById('verification-summary');
     const verificationDirectory = document.getElementById('verification-directory');

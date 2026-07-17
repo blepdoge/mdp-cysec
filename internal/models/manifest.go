@@ -11,7 +11,7 @@ type CaseMetadata struct {
 	CaseID            string     `json:"case_id,omitempty"`
 	CaseName          string     `json:"case_name,omitempty"`
 	Analyst           string     `json:"analyst,omitempty"`
-	SourcePath        string     `json:"source_path,omitempty"`
+	EvidenceDirectory string     `json:"evidence_directory,omitempty"`
 	CaseRootHash      string     `json:"case_root_hash"`
 	TotalArtifacts    int        `json:"total_artifacts"`
 	TotalBytes        int64      `json:"total_bytes"`

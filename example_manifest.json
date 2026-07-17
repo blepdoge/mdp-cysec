@@ -4,7 +4,7 @@
     "case_id": "DEMO-001",
     "case_name": "Sample integrity case",
     "analyst": "MDPCYSEC",
-    "source_path": "D:\\MDPCYSEC\\testdata\\sample_case",
+    "evidence_directory": "D:\\MDPCYSEC\\testdata\\sample_case",
     "case_root_hash": "472cc4147ff801904c4d59de88a0706104792e72ccf7e76b49eb705d7df11da9",
     "total_artifacts": 2,
     "total_bytes": 162,
