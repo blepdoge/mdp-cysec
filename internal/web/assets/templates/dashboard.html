@@ -3,11 +3,21 @@
     <div class="dashboard-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1.5rem; margin-bottom: 1.5rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
             <h2 style="font-size: 1.5rem; color: var(--accent-color); margin: 0;">Case dashboard</h2>
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-                <button id="verify-btn" class="btn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; background: var(--success-color);">🛡️ Verify Integrity</button>
-                <a href="/api/export/manifest" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Export Manifest</a>
-                <a href="/api/export/report.html" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Export HTML</a>
-                <a href="/api/export/report.json" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Export JSON</a>
+            <div style="display: flex; gap: 0.5rem; align-items: center; position: relative;">
+                <button id="verify-btn" class="btn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; background: var(--success-color);">🛡️ Verify integrity</button>
+                
+                <!-- Export Dropdown -->
+                <div style="position: relative; display: inline-block;">
+                    <button id="export-dropdown-btn" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                        📤 Export <span>▼</span>
+                    </button>
+                    <div id="export-dropdown-menu" style="display: none; position: absolute; right: 0; top: 125%; background: #1e293b; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.6); z-index: 100; min-width: 190px; overflow: hidden; backdrop-filter: blur(10px);">
+                        <a href="/api/export/manifest" style="display: block; padding: 0.65rem 1rem; color: var(--text-primary); text-decoration: none; font-size: 0.85rem; transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='transparent'">📋 Master manifest</a>
+                        <a href="/api/export/report.json" style="display: block; padding: 0.65rem 1rem; color: var(--text-primary); text-decoration: none; font-size: 0.85rem; transition: background 0.15s; border-top: 1px solid rgba(255,255,255,0.05);" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='transparent'">📊 JSON integrity report</a>
+                        <a href="/api/export/report.html" style="display: block; padding: 0.65rem 1rem; color: var(--text-primary); text-decoration: none; font-size: 0.85rem; transition: background 0.15s; border-top: 1px solid rgba(255,255,255,0.05);" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='transparent'">📄 HTML integrity report</a>
+                    </div>
+                </div>
+
                 <a href="/" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Back to home</a>
             </div>
         </div>
@@ -54,9 +64,14 @@
             </div>
         </div>
 
-        <div style="margin-top: 1rem; display: grid; grid-template-columns: 1fr auto; gap: 0.75rem; align-items: center;">
-            <input id="verify-directory-input" type="text" placeholder="Verification folder path, e.g. D:\Evidence\Case001" value="{{.Manifest.CaseMetadata.EvidenceDirectory}}" style="padding: 0.65rem 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; min-width: 0;">
-            <button id="use-manifest-source-btn" class="btn btn-secondary" style="padding: 0.65rem 0.9rem;">Use manifest source</button>
+        <div style="margin-top: 1.25rem;">
+            <label for="verify-directory-input" class="stat-label" style="display: block; margin-bottom: 0.4rem; font-size: 0.85rem; color: var(--text-secondary); font-weight: 600;">
+                🔍 Target directory for integrity check (Folder to verify against manifest)
+            </label>
+            <div style="display: grid; grid-template-columns: 1fr auto; gap: 0.75rem; align-items: center;">
+                <input id="verify-directory-input" type="text" placeholder="Verification folder path, e.g. D:\Evidence\Case001" value="{{.Manifest.CaseMetadata.EvidenceDirectory}}" style="padding: 0.65rem 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; min-width: 0;">
+                <button id="use-manifest-source-btn" class="btn btn-secondary" style="padding: 0.65rem 0.9rem;">Use manifest source</button>
+            </div>
         </div>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-top: 1.5rem;">
@@ -724,6 +739,23 @@
             .replaceAll('"', '&quot;')
             .replaceAll("'", '&#039;');
     }
+
+    // Dropdown menu toggle logic
+    const exportDropdownBtn = document.getElementById('export-dropdown-btn');
+    const exportDropdownMenu = document.getElementById('export-dropdown-menu');
+
+    exportDropdownBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isVisible = exportDropdownMenu.style.display === 'block';
+        exportDropdownMenu.style.display = isVisible ? 'none' : 'block';
+    });
+
+    document.addEventListener('click', () => {
+        if (exportDropdownMenu) {
+            exportDropdownMenu.style.display = 'none';
+        }
+    });
+
     loadArtifacts();
     renderReport();
 </script>
