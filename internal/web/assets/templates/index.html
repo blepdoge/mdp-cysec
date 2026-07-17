@@ -87,6 +87,8 @@
         .then(async res => {
             const data = await res.json();
             if (res.ok && data.status === 'success') {
+                localStorage.removeItem('quoted-exhibits');
+                localStorage.removeItem('quote-export-directory');
                 window.location.href = '/dashboard';
             } else {
                 alert("Import failed: " + (data.error || "Invalid file format or server error"));
@@ -100,7 +102,7 @@
     });
 
     function loadDirectory(path) {
-        const url = path ? `/api/explore?dir=${encodeURIComponent(path)}` : `/api/explore`;
+        const url = path ? `/api/explore?dir=${encodeURIComponent(path)}` : '/api/explore';
         fetch(url)
             .then(res => res.json())
             .then(data => {
@@ -129,7 +131,7 @@
                 });
             })
             .catch(err => {
-                alert("Failed to read directory. " + err);
+                alert(`Failed to read directory. ${err}`);
                 loadDirectory(selectedPath); // revert
             });
     }
@@ -137,6 +139,8 @@
     document.getElementById('confirm-btn').addEventListener('click', () => {
         document.getElementById('explorer-container').style.display = 'none';
         document.getElementById('status-container').style.display = 'block';
+        localStorage.removeItem('quoted-exhibits');
+        localStorage.removeItem('quote-export-directory');
 
         fetch("/api/start", {
             method: "POST",
@@ -160,8 +164,7 @@
             const data = JSON.parse(event.data);
             const count = data.processed;
 
-            document.getElementById("status-text").innerText =
-                `Processed files... (${count})`;
+            document.getElementById("status-text").innerText = `Processed files... (${count})`;
             document.getElementById("status-text").classList.remove("pulsing");
 
             if (data.done) {

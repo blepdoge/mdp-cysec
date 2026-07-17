@@ -1,0 +1,86 @@
+{
+  "case_metadata": {
+    "case_root_hash": "",
+    "total_artifacts": 11,
+    "creation_timestamp": "2026-07-07T19:16:19.907994Z"
+  },
+  "artifacts": [
+    {
+      "name": ".localized",
+      "path": "/.localized",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+      "md5": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "name": ".DS_Store",
+      "path": "/.DS_Store",
+      "sha256": "96824c7ef45aea0a026284520121f1ecf31d90d13daf71363edef4b7c8b17780",
+      "sha1": "4b158742497d08f59945d7693baaceb971877c2d",
+      "md5": "f16e46e5b0d6d0e32026811f387d7bde"
+    },
+    {
+      "name": "manimm.ipynb",
+      "path": "/Telegram Desktop/manimm.ipynb",
+      "sha256": "0c793228effa16197d90bf878fbd284ad917c77c73e3243a0fd9cd7f5ba43643",
+      "sha1": "2e6d54ac1d9b9c9c7ee98475de373e7e2d40f04f",
+      "md5": "dbaf8437b73e8a036e8f8ee9be5e93c6"
+    },
+    {
+      "name": "ADITYA-SRIVASTAVA-2856288557.pdf",
+      "path": "/Telegram Desktop/ADITYA-SRIVASTAVA-2856288557.pdf",
+      "sha256": "8aad46bef8d453b8c90a77d08ab83e5a771594d9a861572d30977261732acfac",
+      "sha1": "1c8ad090c1cff8f1f1fb7c71f8d56a98dffafb89",
+      "md5": "badbeb0ec865e207855ecef8271d3efb"
+    },
+    {
+      "name": "health_card.pdf",
+      "path": "/Telegram Desktop/health_card.pdf",
+      "sha256": "a8d572cf93c8b26a2a06de4e74ab5899fe4f20fa4775a4ecd5be805c793dea66",
+      "sha1": "2088f0d02a0cc2c430137495c0e808360f5ac4cd",
+      "md5": "ed6037834ad67d28868003d09c5000b7"
+    },
+    {
+      "name": "fia_dfl_system_model.pdf",
+      "path": "/fia_dfl_system_model.pdf",
+      "sha256": "14538f9bfd66db6f58ac52b9aa75082b482a211bae2860ab5aa992276e162183",
+      "sha1": "60c82a9d166959e9a154adc8ff84c4bd231ac9eb",
+      "md5": "f18cb3698bded9051f8749a407a4ee6d"
+    },
+    {
+      "name": "sys_model.pdf",
+      "path": "/sys_model.pdf",
+      "sha256": "e361aeddd8b34f3b8d66b8652f40a8c99d7b5589100951c4e1b1b0686b347c86",
+      "sha1": "de5fc8f4c7da3ebeaff77bb873caee04cdc40c04",
+      "md5": "5da511100ffd6b494f5e48ff7f57dd03"
+    },
+    {
+      "name": "robotic_arm.png",
+      "path": "/robotic_arm.png",
+      "sha256": "bb21078b65849ce8762301917baeecf332ae6d60d0708fbe761ff63c9c8c822c",
+      "sha1": "7c1e104a9d5d4a87ad825ac4dfc5d02c71d2a6ac",
+      "md5": "27b1ac8f69a7726713a639a177f9d408"
+    },
+    {
+      "name": "bio_inspired.ipynb",
+      "path": "/Telegram Desktop/bio_inspired.ipynb",
+      "sha256": "08238c56e3b9f079c852e32b42f14856f149d344eb4b64b61fade8ae0f18c667",
+      "sha1": "9c48954f453e28bdb34ee313c31090fb1b4ac156",
+      "md5": "adb7b3ce413d5483eeae9309dfaa3696"
+    },
+    {
+      "name": "phd.zip",
+      "path": "/Telegram Desktop/phd.zip",
+      "sha256": "394c0c4f0edd8bc6f25edfa2ad96ef90fe5d8367e693682e65f05fc358513040",
+      "sha1": "725613a1aa117096ead878c81fe62ee158771df0",
+      "md5": "73985c8e3d0cb75be7204861e95a8bbf"
+    },
+    {
+      "name": "cifar-10-python.tar.gz",
+      "path": "/cifar-10-python.tar.gz",
+      "sha256": "6d958be074577803d12ecdefd02955f39262c83c16fe9348329d7fe0b5c001ce",
+      "sha1": "874905e36347c8536514d0a26261acf3bff89bc7",
+      "md5": "c58f30108f718f92721af3b95e74349a"
+    }
+  ]
+}

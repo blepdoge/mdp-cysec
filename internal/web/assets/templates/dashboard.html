@@ -65,6 +65,24 @@
         </button>
     </div>
 
+    <div id="quote-status" style="display:none; margin-bottom: 1rem; padding: 0.9rem 1rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.25); color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5;"></div>
+
+    <div id="export-picker-modal" style="display:none; position: fixed; inset: 0; background: rgba(2, 6, 23, 0.82); backdrop-filter: blur(8px); z-index: 1000; padding: 2rem; overflow-y: auto;">
+        <div class="glass-panel" style="max-width: 900px; margin: 0 auto;">
+            <h3 style="margin: 0 0 0.5rem 0; font-size: 1.4rem;">Choose export directory</h3>
+            <p style="margin: 0 0 1rem 0; color: var(--text-secondary);">Navigate to the folder where the quoted exhibit should be copied.</p>
+
+            <div style="margin-bottom: 1rem; font-family: monospace; color: var(--accent-color); background: rgba(0,0,0,0.2); padding: 0.6rem 0.75rem; border-radius: 6px;" id="export-current-dir"></div>
+
+            <div id="export-folder-list" class="folder-list" style="max-height: 360px;"></div>
+
+            <div style="margin-top: 1rem; display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                <button id="export-cancel-btn" class="btn btn-secondary">Cancel</button>
+                <button id="export-confirm-btn" class="btn" disabled style="opacity: 0.5; cursor: not-allowed;">Use this directory</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Tab Contents -->
     <div id="explorer-tab-content">
         <!-- Explorer -->
@@ -113,6 +131,7 @@
                             <th style="padding: 0.75rem; color: var(--text-secondary);">Exhibit name</th>
                             <th style="padding: 0.75rem; color: var(--text-secondary);">Original path</th>
                             <th style="padding: 0.75rem; color: var(--text-secondary);">SHA256</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Integrity</th>
                             <th style="padding: 0.75rem; color: var(--text-secondary); width: 100px;">Actions</th>
                         </tr>
                     </thead>
@@ -130,6 +149,11 @@
     let currentQuery = "";
     let loadedArtifacts = [];
     let quotedExhibits = [];
+    let exportDirectory = normalizeExportDirectory(localStorage.getItem('quote-export-directory') || "");
+    let pendingQuotePath = "";
+    let pendingQuoteButton = null;
+    let exportPickerSelectedPath = "";
+    const quotedExhibitsStorageKey = 'quoted-exhibits';
 
     const searchInput = document.getElementById('search-input');
     const tableBody = document.getElementById('artifact-table-body');
@@ -141,6 +165,12 @@
     const tabReportBtn = document.getElementById('tab-report-btn');
     const explorerTabContent = document.getElementById('explorer-tab-content');
     const reportTabContent = document.getElementById('report-tab-content');
+    const quoteStatus = document.getElementById('quote-status');
+    const exportPickerModal = document.getElementById('export-picker-modal');
+    const exportCurrentDir = document.getElementById('export-current-dir');
+    const exportFolderList = document.getElementById('export-folder-list');
+    const exportCancelBtn = document.getElementById('export-cancel-btn');
+    const exportConfirmBtn = document.getElementById('export-confirm-btn');
 
     // Tab Switching Navigation
     tabExplorerBtn.addEventListener('click', () => switchTab('explorer'));
@@ -165,6 +195,75 @@
     }
     window.switchTab = switchTab; // Expose globally for back links
 
+    function normalizeExportDirectory(path) {
+        if (!path || path === "/" || path === "This PC") {
+            return "";
+        }
+        return path;
+    }
+
+    function persistQuotedExhibits() {
+        localStorage.setItem(quotedExhibitsStorageKey, JSON.stringify(quotedExhibits));
+    }
+
+    function hydrateQuotedExhibits() {
+        try {
+            const stored = localStorage.getItem(quotedExhibitsStorageKey);
+            if (!stored) {
+                return;
+            }
+
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+                quotedExhibits = parsed.filter(item =>
+                    item &&
+                    typeof item.original_path === 'string' &&
+                    typeof item.exhibit_name === 'string' &&
+                    typeof item.source_sha256 === 'string'
+                );
+            }
+        } catch (err) {
+            console.warn('Failed to restore quoted exhibits:', err);
+            quotedExhibits = [];
+        }
+    }
+
+    function hasExportDirectory() {
+        return Boolean(exportDirectory && exportDirectory !== "/" && exportDirectory !== "This PC");
+    }
+
+    exportCancelBtn.addEventListener('click', closeExportPicker);
+    exportConfirmBtn.addEventListener('click', () => {
+        if (!exportPickerSelectedPath) {
+            return;
+        }
+
+        closeExportPicker();
+        quoteArtifact(pendingQuotePath, pendingQuoteButton, exportPickerSelectedPath);
+    });
+
+    function setQuoteStatus(message, kind = 'neutral') {
+        if (!quoteStatus) return;
+
+        quoteStatus.style.display = 'block';
+        quoteStatus.innerText = message;
+        quoteStatus.style.borderColor = kind === 'success'
+            ? 'rgba(16, 185, 129, 0.45)'
+            : kind === 'error'
+                ? 'rgba(239, 68, 68, 0.55)'
+                : 'rgba(255,255,255,0.08)';
+        quoteStatus.style.color = kind === 'success'
+            ? 'var(--success-color)'
+            : kind === 'error'
+                ? '#fca5a5'
+                : 'var(--text-secondary)';
+        quoteStatus.style.background = kind === 'success'
+            ? 'rgba(16, 185, 129, 0.08)'
+            : kind === 'error'
+                ? 'rgba(239, 68, 68, 0.08)'
+                : 'rgba(0,0,0,0.25)';
+    }
+
     // Debounce search
     let searchTimeout;
     searchInput.addEventListener('input', (e) => {
@@ -188,6 +287,109 @@
         loadArtifacts();
     });
 
+    function openExportPicker(path, button) {
+        pendingQuotePath = path;
+        pendingQuoteButton = button;
+        exportPickerModal.style.display = 'block';
+        exportDirectory = normalizeExportDirectory(localStorage.getItem('quote-export-directory') || exportDirectory);
+        loadExportDirectory("/");
+    }
+    window.openExportPicker = openExportPicker;
+
+    function closeExportPicker() {
+        exportPickerModal.style.display = 'none';
+        exportPickerSelectedPath = "";
+        exportFolderList.innerHTML = "";
+    }
+
+    function canUseDirectory(path) {
+        return path && path !== "This PC" && path !== "/";
+    }
+
+    function quoteSelectedArtifact(path, button) {
+        if (hasExportDirectory()) {
+            quoteArtifact(path, button, exportDirectory);
+            return;
+        }
+
+        openExportPicker(path, button);
+    }
+
+    function loadExportDirectory(path) {
+        const url = path ? '/api/explore?dir=' + encodeURIComponent(path) : '/api/explore';
+        exportCurrentDir.innerText = "Loading...";
+        exportConfirmBtn.disabled = true;
+        exportConfirmBtn.style.opacity = "0.5";
+        exportConfirmBtn.style.cursor = "not-allowed";
+        exportFolderList.innerHTML = `<div style="padding: 0.85rem; color: var(--text-secondary);">Loading folders...</div>`;
+
+        fetch(url)
+            .then(async res => {
+                const text = await res.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (parseErr) {
+                    throw new Error(text || parseErr.message);
+                }
+
+                if (!res.ok) {
+                    throw new Error(data.error || data.message || ('HTTP ' + res.status));
+                }
+
+                exportPickerSelectedPath = data.current_dir;
+                exportCurrentDir.innerText = 'Current folder: ' + data.current_dir;
+
+                if (canUseDirectory(exportPickerSelectedPath)) {
+                    exportConfirmBtn.disabled = false;
+                    exportConfirmBtn.style.opacity = "1";
+                    exportConfirmBtn.style.cursor = "pointer";
+                } else {
+                    exportConfirmBtn.disabled = true;
+                    exportConfirmBtn.style.opacity = "0.5";
+                    exportConfirmBtn.style.cursor = "not-allowed";
+                }
+
+                exportFolderList.innerHTML = "";
+                const currentFolderItem = document.createElement('div');
+                currentFolderItem.className = 'folder-item';
+                currentFolderItem.style.border = '1px solid rgba(59, 130, 246, 0.35)';
+                currentFolderItem.style.background = 'rgba(59, 130, 246, 0.08)';
+                currentFolderItem.innerHTML = `📂 Use this folder: ${data.current_dir}`;
+                currentFolderItem.onclick = () => {
+                    exportPickerSelectedPath = data.current_dir;
+                    exportDirectory = data.current_dir;
+                    exportCurrentDir.innerText = `Current folder: ${data.current_dir}`;
+                    exportConfirmBtn.disabled = !canUseDirectory(data.current_dir);
+                    exportConfirmBtn.style.opacity = exportConfirmBtn.disabled ? "0.5" : "1";
+                    exportConfirmBtn.style.cursor = exportConfirmBtn.disabled ? "not-allowed" : "pointer";
+                };
+                exportFolderList.appendChild(currentFolderItem);
+
+                if (!data.entries || data.entries.length === 0) {
+                    exportFolderList.innerHTML = `<div style="padding: 0.85rem; color: var(--text-secondary);">No subfolders here. You can still use the current directory if it is enabled.</div>`;
+                    exportFolderList.prepend(currentFolderItem);
+                    return;
+                }
+
+                data.entries.forEach(entry => {
+                    const div = document.createElement('div');
+                    div.className = 'folder-item';
+                    div.innerHTML = `📁 ${entry.name}`;
+                    div.onclick = () => {
+                        exportDirectory = entry.path;
+                        loadExportDirectory(entry.path);
+                    };
+                    exportFolderList.appendChild(div);
+                });
+            })
+            .catch(err => {
+                exportCurrentDir.innerText = "Unable to load folders.";
+                exportFolderList.innerHTML = `<div style="padding: 0.85rem; color: #fca5a5;">Could not load folder list: ${err.message}</div>`;
+                setQuoteStatus(`Could not open export directory browser: ${err.message}`, 'error');
+            });
+    }
+
     function loadArtifacts() {
         const url = `/api/artifacts?page=${currentPage}&q=${encodeURIComponent(currentQuery)}`;
 
@@ -207,12 +409,13 @@
                 loadedArtifacts.forEach(art => {
                     const tr = document.createElement('tr');
                     tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+                    const encodedPath = encodeURIComponent(art.path);
 
                     tr.innerHTML = `
                         <td style="padding: 0.75rem; word-break: break-all; font-size: 0.9rem;">${art.path}</td>
                         <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--accent-color);">${art.sha256.substring(0, 16)}...</td>
                         <td style="padding: 0.75rem;">
-                            <button class="btn btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;" onclick="quoteArtifact('${art.path}')">Quote</button>
+                            <button class="btn btn-secondary quote-btn" data-original-path="${encodedPath}" onclick="quoteSelectedArtifact(decodeURIComponent(this.getAttribute('data-original-path')), this)" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Quote</button>
                         </td>
                     `;
                     tableBody.appendChild(tr);
@@ -226,8 +429,105 @@
             });
     }
 
-    function quoteArtifact(path) {
-        alert("Quote action triggered for: " + path + "\n\n(This will be implemented in Issue #4: Automated subset extraction)");
+    async function quoteArtifact(path, button, directoryOverride) {
+        const originalLabel = button ? button.textContent : "Quote";
+        let timeoutId = null;
+        if (button) {
+            button.disabled = true;
+            button.textContent = "Quoting...";
+        }
+        setQuoteStatus(`Quoting ${path}...`, 'neutral');
+        const chosenDirectory = (directoryOverride || exportDirectory || "").trim();
+        if (!chosenDirectory) {
+            setQuoteStatus("Please choose an export directory first.", 'error');
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalLabel;
+            }
+            return;
+        }
+
+        exportDirectory = normalizeExportDirectory(chosenDirectory);
+        localStorage.setItem('quote-export-directory', exportDirectory);
+        setQuoteStatus(`Sending quote request for ${path} to ${exportDirectory}...`, 'neutral');
+
+        try {
+            const controller = new AbortController();
+            timeoutId = setTimeout(() => controller.abort(), 90000);
+
+            const response = await fetch('/api/quote', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    original_path: path,
+                    export_directory: exportDirectory
+                }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            setQuoteStatus(`Backend responded for ${path}. Reading result...`, 'neutral');
+
+            const data = await response.json();
+
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data.error || 'Quote request failed');
+            }
+
+            quotedExhibits = quotedExhibits.filter(exhibit => exhibit.original_path !== data.original_path);
+            quotedExhibits.push({
+                original_path: data.original_path,
+                exhibit_name: data.exhibit_name,
+                source_sha256: data.source_sha256,
+                integrity_verified: data.integrity_verified,
+                copied_path: data.copied_path
+            });
+            persistQuotedExhibits();
+            renderReport();
+            switchTab('report');
+            setQuoteStatus(
+                `Quote completed: ${data.exhibit_name} was copied to ${data.copied_path}. Report manifest updated at ${data.manifest_path}.`,
+                'success'
+            );
+
+            const clipboardText = [
+                `Original path: ${data.original_path}`,
+                `Exhibit name: ${data.exhibit_name}`,
+                `SHA256: ${data.source_sha256}`,
+                `Copied path: ${data.copied_path}`,
+                `Integrity verified: ${data.integrity_verified}`
+            ].join('\n');
+
+            try {
+                await navigator.clipboard.writeText(clipboardText);
+            } catch (clipboardError) {
+                console.warn('Clipboard copy failed:', clipboardError);
+                setQuoteStatus(
+                    `Quote completed, but clipboard copy was blocked. File: ${data.exhibit_name}. Exported to ${data.copied_path}.`,
+                    'success'
+                );
+            }
+        } catch (err) {
+            const message = err.name === 'AbortError'
+                ? 'Quote request timed out after 90 seconds'
+                : err.message;
+            if (message.includes('export directory is not writable')) {
+                exportDirectory = "";
+                localStorage.removeItem('quote-export-directory');
+            }
+            setQuoteStatus(`Quote failed: ${message}`, 'error');
+            alert(`Quote failed: ${message}`);
+        } finally {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+            }
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalLabel;
+            }
+        }
     }
 
     function renderReport() {
@@ -245,13 +545,11 @@
             const tr = document.createElement('tr');
             tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
 
-            const prefix = exhibit.sha256.substring(0, 8);
-            const exhibitName = `${prefix}_${exhibit.name}`;
-
             tr.innerHTML = `
-                <td style="padding: 0.75rem; font-weight: 600; color: var(--accent-color); font-size: 0.9rem; word-break: break-all;">${exhibitName}</td>
-                <td style="padding: 0.75rem; font-size: 0.9rem; word-break: break-all;">${exhibit.path}</td>
-                <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--text-secondary); word-break: break-all;">${exhibit.sha256}</td>
+                <td style="padding: 0.75rem; font-weight: 600; color: var(--accent-color); font-size: 0.9rem; word-break: break-all;">${exhibit.exhibit_name}</td>
+                <td style="padding: 0.75rem; font-size: 0.9rem; word-break: break-all;">${exhibit.original_path}</td>
+                <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--text-secondary); word-break: break-all;">${exhibit.source_sha256}</td>
+                <td style="padding: 0.75rem; font-size: 0.9rem; color: ${exhibit.integrity_verified ? 'var(--success-color)' : '#ef4444'}; font-weight: 600;">${exhibit.integrity_verified ? 'Verified' : 'Failed'}</td>
                 <td style="padding: 0.75rem;">
                     <button class="btn" style="padding: 0.25rem 0.75rem; font-size: 0.8rem; background: #ef4444; border: none; border-radius: 4px; color: white; cursor: pointer;" onclick="removeQuote(${index})">Remove</button>
                 </td>
@@ -262,10 +560,13 @@
 
     window.removeQuote = function(index) {
         quotedExhibits.splice(index, 1);
+        persistQuotedExhibits();
         renderReport();
     }
 
     // Initial load
+    hydrateQuotedExhibits();
+    exportDirectory = normalizeExportDirectory(localStorage.getItem('quote-export-directory') || "");
     loadArtifacts();
     renderReport();
 </script>

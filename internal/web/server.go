@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"mdp-cysec/internal/exporting"
 	"mdp-cysec/internal/hashing"
 	"mdp-cysec/internal/merkle"
 	"mdp-cysec/internal/models"
@@ -21,10 +22,11 @@ import (
 )
 
 type Server struct {
-	mux             *http.ServeMux
-	templates       *template.Template
-	rootDir         string
-	tsa             *rfc3161.Client
+	mux         *http.ServeMux
+	templates   *template.Template
+	rootDir     string
+	evidenceDir string
+	tsa         *rfc3161.Client
 
 	clients         map[chan string]bool
 	clientsMu       sync.Mutex
@@ -44,9 +46,9 @@ type Server struct {
 // disables timestamping.
 func NewServer(rootDir, tsaURL string) (*Server, error) {
 	s := &Server{
-		mux:       http.NewServeMux(),
-		rootDir:   rootDir,
-		clients:   make(map[chan string]bool),
+		mux:     http.NewServeMux(),
+		rootDir: rootDir,
+		clients: make(map[chan string]bool),
 	}
 	if tsaURL != "" {
 		s.tsa = rfc3161.NewClient(tsaURL)
@@ -87,6 +89,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/explore", s.handleExplore)
 	s.mux.HandleFunc("/api/artifacts", s.handleArtifacts)
 	s.mux.HandleFunc("/api/import", s.handleImport)
+	s.mux.HandleFunc("/api/quote", s.handleQuote)
 	s.mux.HandleFunc("/dashboard", s.handleDashboard)
 }
 
@@ -104,6 +107,11 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 type StartRequest struct {
 	Directory string `json:"directory"`
+}
+
+type QuoteRequest struct {
+	OriginalPath    string `json:"original_path"`
+	ExportDirectory string `json:"export_directory"`
 }
 
 // handleStart begins the asynchronous concurrent hashing of the target directory.
@@ -125,6 +133,9 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	if targetDir == "" {
 		targetDir = s.rootDir // fallback
 	}
+	s.stateMu.Lock()
+	s.evidenceDir = targetDir
+	s.stateMu.Unlock()
 
 	// Update hashing state thread-safely
 	s.stateMu.Lock()
@@ -147,19 +158,19 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 			s.stateMu.Unlock()
 			return
 		}
-		
+
 		timestamp := time.Now().Format("20060102_150405")
 		filename := fmt.Sprintf("manifest_%s.json", timestamp)
 		s.sealManifest(manifest, timestamp)
 		manifest.SaveToFile(filename)
 		s.currentManifest = manifest
-		
+
 		s.stateMu.Lock()
 		s.hashingActive = false
 		s.hashingDone = true
 		s.hashingTotal = manifest.CaseMetadata.TotalArtifacts
 		s.stateMu.Unlock()
-		
+
 		s.broadcastSSE(fmt.Sprintf(`{"processed": %d, "done": true}`, manifest.CaseMetadata.TotalArtifacts))
 	}()
 
@@ -326,12 +337,18 @@ func (s *Server) handleExplore(w http.ResponseWriter, r *http.Request) {
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":       err.Error(),
+			"current_dir": dir,
+			"entries":     []FileEntry{},
+		})
 		return
 	}
 
 	var results []FileEntry
-	
+
 	// Add parent directory option
 	parentDir := filepath.Dir(dir)
 	if parentDir != dir {
@@ -354,7 +371,7 @@ func (s *Server) handleExplore(w http.ResponseWriter, r *http.Request) {
 		if !e.IsDir() {
 			continue
 		}
-		
+
 		results = append(results, FileEntry{
 			Name:  e.Name(),
 			Path:  filepath.Join(dir, e.Name()),
@@ -376,7 +393,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := s.templates.ExecuteTemplate(w, "base.html", map[string]interface{}{
-		"Page": "dashboard",
+		"Page":     "dashboard",
 		"Manifest": s.currentManifest,
 	})
 	if err != nil {
@@ -402,10 +419,10 @@ func (s *Server) handleArtifacts(w http.ResponseWriter, r *http.Request) {
 
 	var filtered []models.Artifact
 	for _, art := range s.currentManifest.Artifacts {
-		if query == "" || 
-		   strings.Contains(strings.ToLower(art.Path), query) || 
-		   strings.Contains(strings.ToLower(art.SHA256), query) ||
-		   strings.Contains(strings.ToLower(art.MD5), query) {
+		if query == "" ||
+			strings.Contains(strings.ToLower(art.Path), query) ||
+			strings.Contains(strings.ToLower(art.SHA256), query) ||
+			strings.Contains(strings.ToLower(art.MD5), query) {
 			filtered = append(filtered, art)
 		}
 	}
@@ -470,6 +487,71 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 
 	s.currentManifest = &manifest
 
+	// Check if the original root directory is still accessible and set it
+	if manifest.CaseMetadata.EvidenceDirectory != "" {
+		if info, err := os.Stat(manifest.CaseMetadata.EvidenceDirectory); err == nil && info.IsDir() {
+			s.stateMu.Lock()
+			s.evidenceDir = manifest.CaseMetadata.EvidenceDirectory
+			s.stateMu.Unlock()
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
+// handleQuote copies a single artifact into a report export directory, prefixes the
+// copied file with the source hash, and updates a report_manifest.json alongside it.
+func (s *Server) handleQuote(w http.ResponseWriter, r *http.Request) {
+	writeJSONError := func(status int, message string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		json.NewEncoder(w).Encode(map[string]string{"error": message})
+	}
+
+	if r.Method != http.MethodPost {
+		writeJSONError(http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	if s.currentManifest == nil {
+		writeJSONError(http.StatusBadRequest, "No manifest loaded")
+		return
+	}
+
+	var req QuoteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.OriginalPath == "" || req.ExportDirectory == "" {
+		writeJSONError(http.StatusBadRequest, "original_path and export_directory are required")
+		return
+	}
+
+	fmt.Printf("Quote request received: original_path=%s export_directory=%s\n", req.OriginalPath, req.ExportDirectory)
+	s.stateMu.Lock()
+	sourceRoot := s.evidenceDir
+	if sourceRoot == "" {
+		sourceRoot = s.rootDir
+	}
+	s.stateMu.Unlock()
+
+	result, err := exporting.QuoteArtifact(sourceRoot, req.OriginalPath, req.ExportDirectory, s.currentManifest)
+	if err != nil {
+		fmt.Printf("Quote request failed: %v\n", err)
+		writeJSONError(http.StatusBadRequest, err.Error())
+		return
+	}
+	fmt.Printf("Quote request completed: exhibit_name=%s copied_path=%s\n", result.ExhibitName, result.CopiedPath)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":             "success",
+		"original_path":      result.OriginalPath,
+		"exhibit_name":       result.ExhibitName,
+		"source_sha256":      result.SourceSHA256,
+		"integrity_verified": result.IntegrityVerified,
+		"copied_path":        result.CopiedPath,
+		"manifest_path":      result.ManifestPath,
+	})
 }
