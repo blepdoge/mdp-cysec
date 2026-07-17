@@ -32,9 +32,9 @@
                     {{if .Manifest.CaseMetadata.EvidenceDirectory}}{{.Manifest.CaseMetadata.EvidenceDirectory}}{{else}}Not embedded in manifest{{end}}
                 </span>
             </div>
-            <div>
+            <div style="grid-column: span 2;">
                 <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">Case Merkle Root Hash</span>
-                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary);">
+                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary); word-break: break-all;">
                     {{if .Manifest.CaseMetadata.CaseRootHash}}
                         {{.Manifest.CaseMetadata.CaseRootHash}}
                     {{else}}
@@ -44,7 +44,7 @@
             </div>
             <div>
                 <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">RFC 3161 Timestamp Attestation</span>
-                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary);">
+                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary); word-break: break-all;">
                     {{if .Manifest.CaseMetadata.RFC3161TokenPath}}
                         Certified: {{.Manifest.CaseMetadata.RFC3161TokenPath}}
                     {{else}}
