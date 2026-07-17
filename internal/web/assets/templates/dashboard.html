@@ -515,13 +515,106 @@
             });
     }
 
-async function quoteArtifact(path, button, directoryOverride) {
+    async function quoteArtifact(path, button, directoryOverride) {
         const originalLabel = button ? button.textContent : "Quote";
         let timeoutId = null;
         if (button) {
             button.disabled = true;
             button.textContent = "Quoting...";
         }
+        setQuoteStatus(`Quoting ${path}...`, 'neutral');
+        const chosenDirectory = (directoryOverride || exportDirectory || "").trim();
+        if (!chosenDirectory) {
+            setQuoteStatus("Please choose an export directory first.", 'error');
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalLabel;
+            }
+            return;
+        }
+
+        exportDirectory = normalizeExportDirectory(chosenDirectory);
+        localStorage.setItem('quote-export-directory', exportDirectory);
+        setQuoteStatus(`Sending quote request for ${path} to ${exportDirectory}...`, 'neutral');
+
+        try {
+            const controller = new AbortController();
+            timeoutId = setTimeout(() => controller.abort(), 90000);
+
+            const response = await fetch('/api/quote', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    original_path: path,
+                    export_directory: exportDirectory
+                }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            setQuoteStatus(`Backend responded for ${path}. Reading result...`, 'neutral');
+
+            const data = await response.json();
+
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data.error || 'Quote request failed');
+            }
+
+            quotedExhibits = quotedExhibits.filter(exhibit => exhibit.original_path !== data.original_path);
+            quotedExhibits.push({
+                original_path: data.original_path,
+                exhibit_name: data.exhibit_name,
+                source_sha256: data.source_sha256,
+                integrity_verified: data.integrity_verified,
+                copied_path: data.copied_path
+            });
+            persistQuotedExhibits();
+            renderReport();
+            switchTab('report');
+            setQuoteStatus(
+                `Quote completed: ${data.exhibit_name} was copied to ${data.copied_path}. Report manifest updated at ${data.manifest_path}.`,
+                'success'
+            );
+
+            const clipboardText = [
+                `Original path: ${data.original_path}`,
+                `Exhibit name: ${data.exhibit_name}`,
+                `SHA256: ${data.source_sha256}`,
+                `Copied path: ${data.copied_path}`,
+                `Integrity verified: ${data.integrity_verified}`
+            ].join('\n');
+
+            try {
+                await navigator.clipboard.writeText(clipboardText);
+            } catch (clipboardError) {
+                console.warn('Clipboard copy failed:', clipboardError);
+                setQuoteStatus(
+                    `Quote completed, but clipboard copy was blocked. File: ${data.exhibit_name}. Exported to ${data.copied_path}.`,
+                    'success'
+                );
+            }
+        } catch (err) {
+            const message = err.name === 'AbortError'
+                ? 'Quote request timed out after 90 seconds'
+                : err.message;
+            if (message.includes('export directory is not writable')) {
+                exportDirectory = "";
+                localStorage.removeItem('quote-export-directory');
+            }
+            setQuoteStatus(`Quote failed: ${message}`, 'error');
+            alert(`Quote failed: ${message}`);
+        } finally {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+            }
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalLabel;
+            }
+        }
+    }
 
 
     function runVerification(directory) {
