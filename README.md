@@ -32,6 +32,25 @@ The project currently has two major milestones completed on the `main` branch:
 - **Canonical artifact ordering**: Artifacts are sorted by file name (path as tie-breaker) before the manifest is written, so the same evidence set always produces the same Merkle root.
 - **RFC 3161 attestation**: The Merkle root is sent to a timestamping authority (default: `https://freetsa.org/tsr`, configurable via the `-tsa` flag) and the returned token is saved as `manifest_<timestamp>.tsr` next to the manifest. Implemented with `encoding/asn1` only — no external dependencies. Timestamping is best-effort: if the TSA is unreachable, the manifest is still saved (local-first).
 
+### 6. Integrity Verification Workflow (Issue #5)
+- **Real verification endpoint**: Re-hashes a selected evidence directory and compares it against the loaded manifest.
+- **Clear result classes**: Detects `verified`, `missing`, `modified`, and `extra` files.
+- **Richer manifests**: Manifests include case metadata, evidence directory, total bytes, file sizes, and hash sets.
+- **Report exports**: The dashboard can export the active manifest, a JSON integrity report, and a standalone HTML integrity report.
+
+## Why this exists
+
+`mdp-cysec` helps preserve forensic evidence integrity. At acquisition time, it creates a cryptographic manifest of a folder. Later, it verifies whether that folder still matches the manifest.
+
+The verification result answers four questions:
+
+- `verified`: file still exists and its hashes match.
+- `modified`: file exists but content changed.
+- `missing`: file was in the manifest but is no longer present.
+- `extra`: file exists now but was not in the manifest.
+
+This provides a practical chain-of-custody aid: the manifest captures the original state, and verification proves whether the evidence set stayed stable.
+
 ## How to run locally
 
 1. Run the application via the CLI:
@@ -40,3 +59,12 @@ The project currently has two major milestones completed on the `main` branch:
    ```
 2. Navigate to `http://localhost:8080` in your browser.
 3. Click **Start New Case** to select a directory to hash, or **Import existing case** to upload a manifest file.
+
+## Demo data
+
+Use `example_manifest.json` with these folders to test the verification workflow:
+
+- `testdata/sample_case`: clean match.
+- `testdata/sample_case_modified`: one modified file.
+- `testdata/sample_case_missing`: one missing file.
+- `testdata/sample_case_extra`: one unexpected extra file.

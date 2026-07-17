@@ -1,24 +1,44 @@
 {{define "dashboard_content"}}
 <div class="glass-panel">
-    <!-- Dashboard Header -->
     <div class="dashboard-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1.5rem; margin-bottom: 1.5rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
             <h2 style="font-size: 1.5rem; color: var(--accent-color); margin: 0;">Case dashboard</h2>
             <div style="display: flex; gap: 0.5rem; align-items: center;">
-                <button id="verify-btn" class="btn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; background: var(--success-color);" onclick="alert('Verify integrity clicked! (This will be implemented in Issue #5: Post-transfer integrity check)')">🛡️ Verify Integrity</button>
-                <a href="/" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">← Back to home</a>
+                <button id="verify-btn" class="btn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; background: var(--success-color);">🛡️ Verify Integrity</button>
+                <a href="/api/export/manifest" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Export Manifest</a>
+                <a href="/api/export/report.html" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Export HTML</a>
+                <a href="/api/export/report.json" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Export JSON</a>
+                <a href="/" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Back to home</a>
             </div>
         </div>
 
-        <!-- Case Metadata Placeholders -->
         <div style="margin-top: 1rem; background: rgba(0,0,0,0.25); padding: 1rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+            <div>
+                <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">Case</span>
+                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary);">
+                    {{if .Manifest.CaseMetadata.CaseID}}{{.Manifest.CaseMetadata.CaseID}}{{else}}Unassigned{{end}}
+                    {{if .Manifest.CaseMetadata.CaseName}} - {{.Manifest.CaseMetadata.CaseName}}{{end}}
+                </span>
+            </div>
+            <div>
+                <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">Analyst</span>
+                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary);">
+                    {{if .Manifest.CaseMetadata.Analyst}}{{.Manifest.CaseMetadata.Analyst}}{{else}}Not recorded{{end}}
+                </span>
+            </div>
+            <div>
+                <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">Source path</span>
+                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary); word-break: break-all;">
+                    {{if .Manifest.CaseMetadata.EvidenceDirectory}}{{.Manifest.CaseMetadata.EvidenceDirectory}}{{else}}Not embedded in manifest{{end}}
+                </span>
+            </div>
             <div>
                 <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">Case Merkle Root Hash</span>
                 <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary);">
                     {{if .Manifest.CaseMetadata.CaseRootHash}}
                         {{.Manifest.CaseMetadata.CaseRootHash}}
                     {{else}}
-                        <span style="color: var(--text-secondary); font-style: italic;">[Placeholder] Pending calculation (Issue #3)</span>
+                        <span style="color: var(--text-secondary); font-style: italic;">Pending calculation</span>
                     {{end}}
                 </span>
             </div>
@@ -28,40 +48,56 @@
                     {{if .Manifest.CaseMetadata.RFC3161TokenPath}}
                         Certified: {{.Manifest.CaseMetadata.RFC3161TokenPath}}
                     {{else}}
-                        <span style="color: var(--text-secondary); font-style: italic;">[Placeholder] Pending attestation (Issue #3)</span>
+                        <span style="color: var(--text-secondary); font-style: italic;">Pending attestation</span>
                     {{end}}
                 </span>
             </div>
         </div>
 
-        <!-- Overview Stats -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+        <div style="margin-top: 1rem; display: grid; grid-template-columns: 1fr auto; gap: 0.75rem; align-items: center;">
+            <input id="verify-directory-input" type="text" placeholder="Verification folder path, e.g. D:\Evidence\Case001" value="{{.Manifest.CaseMetadata.EvidenceDirectory}}" style="padding: 0.65rem 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; min-width: 0;">
+            <button id="use-manifest-source-btn" class="btn btn-secondary" style="padding: 0.65rem 0.9rem;">Use manifest source</button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-top: 1.5rem;">
             <div class="stat-card">
-                <span class="stat-label">Total artifacts</span>
+                <span class="stat-label">Manifest artifacts</span>
                 <span class="stat-value">{{.Manifest.CaseMetadata.TotalArtifacts}}</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Total bytes</span>
+                <span class="stat-value">{{.Manifest.CaseMetadata.TotalBytes}}</span>
             </div>
             <div class="stat-card" style="border-left: 4px solid var(--success-color);">
                 <span class="stat-label">Verified</span>
-                <span class="stat-value" style="color: var(--success-color);">{{.Manifest.CaseMetadata.TotalArtifacts}} <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-secondary);">/ {{.Manifest.CaseMetadata.TotalArtifacts}}</span></span>
+                <span id="verified-count" class="stat-value" style="color: var(--success-color);">0</span>
             </div>
             <div class="stat-card" style="border-left: 4px solid #ef4444;">
                 <span class="stat-label">Missing</span>
-                <span class="stat-value" style="color: #ef4444;">0</span>
+                <span id="missing-count" class="stat-value" style="color: #ef4444;">0</span>
             </div>
             <div class="stat-card" style="border-left: 4px solid #f59e0b;">
                 <span class="stat-label">Modified</span>
-                <span class="stat-value" style="color: #f59e0b;">0</span>
+                <span id="modified-count" class="stat-value" style="color: #f59e0b;">0</span>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid #38bdf8;">
+                <span class="stat-label">Extra</span>
+                <span id="extra-count" class="stat-value" style="color: #38bdf8;">0</span>
             </div>
         </div>
+
+        <!-- Verification panel moved to its own tab -->
     </div>
 
-    <!-- Tabs Navigation -->
     <div style="display: flex; gap: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); margin-top: 1.5rem; margin-bottom: 1.5rem;">
         <button id="tab-explorer-btn" class="btn" style="background: none; border: none; border-bottom: 3px solid var(--accent-color); border-radius: 0; color: var(--text-primary); padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-family: var(--font-family); font-size: 1rem; transition: all 0.2s;">
-            🔍 Artifact explorer
+            📁 Artifact explorer
         </button>
         <button id="tab-report-btn" class="btn" style="background: none; border: none; border-bottom: 3px solid transparent; border-radius: 0; color: var(--text-secondary); padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-family: var(--font-family); font-size: 1rem; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem;">
-            📋 Report exhibits <span id="report-tab-count" style="font-size: 0.75rem; background: rgba(255,255,255,0.15); color: var(--text-primary); padding: 0.1rem 0.5rem; border-radius: 10px;">0</span>
+            📑 Report exhibits <span id="report-tab-count" style="font-size: 0.75rem; background: rgba(255,255,255,0.15); color: var(--text-primary); padding: 0.1rem 0.5rem; border-radius: 10px;">0</span>
+        </button>
+        <button id="tab-verification-btn" class="btn" style="background: none; border: none; border-bottom: 3px solid transparent; border-radius: 0; color: var(--text-secondary); padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-family: var(--font-family); font-size: 1rem; transition: all 0.2s;">
+            ✅ Verification results
         </button>
     </div>
 
@@ -85,7 +121,6 @@
 
     <!-- Tab Contents -->
     <div id="explorer-tab-content">
-        <!-- Explorer -->
         <div class="artifact-explorer">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem; flex-wrap: wrap;">
                 <h3 style="font-size: 1.2rem; margin: 0;">Artifact explorer</h3>
@@ -101,9 +136,7 @@
                             <th style="padding: 0.75rem; color: var(--text-secondary);">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="artifact-table-body">
-                        <!-- Populated via JS -->
-                    </tbody>
+                    <tbody id="artifact-table-body"></tbody>
                 </table>
             </div>
 
@@ -118,10 +151,9 @@
     </div>
 
     <div id="report-tab-content" style="display: none;">
-        <!-- Report View (Frontend Mock) -->
         <div class="report-view">
             <h3 style="font-size: 1.2rem; margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">
-                Report exhibits
+                📑 Report exhibits
             </h3>
 
             <div style="overflow-x: auto;">
@@ -135,9 +167,35 @@
                             <th style="padding: 0.75rem; color: var(--text-secondary); width: 100px;">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="report-table-body">
-                        <!-- Populated via JS -->
-                    </tbody>
+                    <tbody id="report-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="verification-tab-content" style="display: none;">
+        <div id="verification-empty" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+            Run a verification to see results here.
+        </div>
+        <div id="verification-panel" style="display: none; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; overflow: hidden;">
+            <div style="display: flex; justify-content: space-between; gap: 1rem; align-items: center; padding: 1rem; border-bottom: 1px solid rgba(255,255,255,0.08); flex-wrap: wrap;">
+                <div>
+                    <h3 style="font-size: 1rem; margin: 0 0 0.25rem 0;">Verification results</h3>
+                    <p id="verification-summary" style="color: var(--text-secondary); font-size: 0.9rem; margin: 0;"></p>
+                </div>
+                <span id="verification-directory" style="font-family: monospace; color: var(--accent-color); font-size: 0.85rem; word-break: break-all;"></span>
+            </div>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Status</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Path</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Expected SHA256</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Actual SHA256</th>
+                        </tr>
+                    </thead>
+                    <tbody id="verification-table-body"></tbody>
                 </table>
             </div>
         </div>
@@ -160,9 +218,18 @@
     const prevBtn = document.getElementById('prev-btn');
     const nextBtn = document.getElementById('next-btn');
     const pageInfo = document.getElementById('page-info');
+    const verifyBtn = document.getElementById('verify-btn');
+    const verifyDirectoryInput = document.getElementById('verify-directory-input');
+    const useManifestSourceBtn = document.getElementById('use-manifest-source-btn');
+    const manifestSourcePath = {{printf "%q" .Manifest.CaseMetadata.EvidenceDirectory}};
+    const verificationPanel = document.getElementById('verification-panel');
+    const verificationSummary = document.getElementById('verification-summary');
+    const verificationDirectory = document.getElementById('verification-directory');
+    const verificationTableBody = document.getElementById('verification-table-body');
 
     const tabExplorerBtn = document.getElementById('tab-explorer-btn');
     const tabReportBtn = document.getElementById('tab-report-btn');
+    const tabVerificationBtn = document.getElementById('tab-verification-btn');
     const explorerTabContent = document.getElementById('explorer-tab-content');
     const reportTabContent = document.getElementById('report-tab-content');
     const quoteStatus = document.getElementById('quote-status');
@@ -171,29 +238,39 @@
     const exportFolderList = document.getElementById('export-folder-list');
     const exportCancelBtn = document.getElementById('export-cancel-btn');
     const exportConfirmBtn = document.getElementById('export-confirm-btn');
+    const verificationTabContent = document.getElementById('verification-tab-content');
+    const verificationEmpty = document.getElementById('verification-empty');
 
-    // Tab Switching Navigation
     tabExplorerBtn.addEventListener('click', () => switchTab('explorer'));
     tabReportBtn.addEventListener('click', () => switchTab('report'));
+    tabVerificationBtn.addEventListener('click', () => switchTab('verification'));
 
     function switchTab(tab) {
+        tabExplorerBtn.style.borderBottomColor = 'transparent';
+        tabExplorerBtn.style.color = 'var(--text-secondary)';
+        tabReportBtn.style.borderBottomColor = 'transparent';
+        tabReportBtn.style.color = 'var(--text-secondary)';
+        tabVerificationBtn.style.borderBottomColor = 'transparent';
+        tabVerificationBtn.style.color = 'var(--text-secondary)';
+        explorerTabContent.style.display = 'none';
+        reportTabContent.style.display = 'none';
+        verificationTabContent.style.display = 'none';
+
         if (tab === 'explorer') {
             tabExplorerBtn.style.borderBottomColor = 'var(--accent-color)';
             tabExplorerBtn.style.color = 'var(--text-primary)';
-            tabReportBtn.style.borderBottomColor = 'transparent';
-            tabReportBtn.style.color = 'var(--text-secondary)';
             explorerTabContent.style.display = 'block';
-            reportTabContent.style.display = 'none';
-        } else {
-            tabExplorerBtn.style.borderBottomColor = 'transparent';
-            tabExplorerBtn.style.color = 'var(--text-secondary)';
+        } else if (tab === 'report') {
             tabReportBtn.style.borderBottomColor = 'var(--accent-color)';
             tabReportBtn.style.color = 'var(--text-primary)';
-            explorerTabContent.style.display = 'none';
             reportTabContent.style.display = 'block';
+        } else if (tab === 'verification') {
+            tabVerificationBtn.style.borderBottomColor = 'var(--accent-color)';
+            tabVerificationBtn.style.color = 'var(--text-primary)';
+            verificationTabContent.style.display = 'block';
         }
     }
-    window.switchTab = switchTab; // Expose globally for back links
+    window.switchTab = switchTab;
 
     function normalizeExportDirectory(path) {
         if (!path || path === "/" || path === "This PC") {
@@ -390,6 +467,15 @@
             });
     }
 
+    verifyBtn.addEventListener('click', () => {
+        runVerification(verifyDirectoryInput.value.trim());
+    });
+
+    useManifestSourceBtn.addEventListener('click', () => {
+        verifyDirectoryInput.value = manifestSourcePath || '';
+        runVerification(verifyDirectoryInput.value.trim());
+    });
+
     function loadArtifacts() {
         const url = `/api/artifacts?page=${currentPage}&q=${encodeURIComponent(currentQuery)}`;
 
@@ -402,18 +488,18 @@
                 if (loadedArtifacts.length === 0) {
                     tableBody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No artifacts found.</td></tr>`;
                     pageInfo.innerText = "0 results";
+                    prevBtn.disabled = currentPage === 1;
                     nextBtn.disabled = true;
                     return;
                 }
 
-                loadedArtifacts.forEach(art => {
+                loadedArtifacts.forEach((art, index) => {
                     const tr = document.createElement('tr');
                     tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
                     const encodedPath = encodeURIComponent(art.path);
-
                     tr.innerHTML = `
-                        <td style="padding: 0.75rem; word-break: break-all; font-size: 0.9rem;">${art.path}</td>
-                        <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--accent-color);">${art.sha256.substring(0, 16)}...</td>
+                        <td style="padding: 0.75rem; word-break: break-all; font-size: 0.9rem;">📄 ${escapeHtml(art.path)}</td>
+                        <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--accent-color);">${escapeHtml(art.sha256.substring(0, 16))}...</td>
                         <td style="padding: 0.75rem;">
                             <button class="btn btn-secondary quote-btn" data-original-path="${encodedPath}" onclick="quoteSelectedArtifact(decodeURIComponent(this.getAttribute('data-original-path')), this)" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Quote</button>
                         </td>
@@ -421,7 +507,7 @@
                     tableBody.appendChild(tr);
                 });
 
-                const totalPages = Math.ceil(data.total / data.limit);
+                const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
                 pageInfo.innerText = `Page ${data.page} of ${totalPages} (${data.total} total)`;
 
                 prevBtn.disabled = currentPage === 1;
@@ -429,105 +515,75 @@
             });
     }
 
-    async function quoteArtifact(path, button, directoryOverride) {
+async function quoteArtifact(path, button, directoryOverride) {
         const originalLabel = button ? button.textContent : "Quote";
         let timeoutId = null;
         if (button) {
             button.disabled = true;
             button.textContent = "Quoting...";
         }
-        setQuoteStatus(`Quoting ${path}...`, 'neutral');
-        const chosenDirectory = (directoryOverride || exportDirectory || "").trim();
-        if (!chosenDirectory) {
-            setQuoteStatus("Please choose an export directory first.", 'error');
-            if (button) {
-                button.disabled = false;
-                button.textContent = originalLabel;
-            }
+
+
+    function runVerification(directory) {
+        verifyBtn.disabled = true;
+        verifyBtn.innerText = 'Verifying...';
+
+        fetch('/api/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ directory })
+        })
+            .then(async res => {
+                const data = await res.json();
+                if (!res.ok) {
+                    if (data.code === 'directory_required') {
+                        verifyDirectoryInput.focus();
+                    }
+                    throw new Error(data.error || 'Verification failed');
+                }
+
+                document.getElementById('verified-count').innerText = data.verified;
+                document.getElementById('missing-count').innerText = data.missing;
+                document.getElementById('modified-count').innerText = data.modified;
+                document.getElementById('extra-count').innerText = data.extra;
+                renderVerificationResults(data);
+                return data;
+            })
+            .catch(err => {
+                alert(err.message);
+            })
+            .finally(() => {
+                verifyBtn.disabled = false;
+                verifyBtn.innerText = 'Verify Integrity';
+            });
+    }
+
+    function renderVerificationResults(data) {
+        verificationEmpty.style.display = 'none';
+        verificationPanel.style.display = 'block';
+        switchTab('verification');
+        verificationDirectory.innerText = data.directory || '';
+        verificationSummary.innerText = `${data.verified} verified, ${data.missing} missing, ${data.modified} modified, ${data.extra} extra. Compared ${data.total_current} current files against ${data.total_expected} manifest entries.`;
+
+        const details = data.details || [];
+        if (details.length === 0) {
+            verificationTableBody.innerHTML = `<tr><td colspan="4" style="padding: 1rem; text-align: center; color: var(--success-color);">All manifest entries match the selected folder.</td></tr>`;
             return;
         }
 
-        exportDirectory = normalizeExportDirectory(chosenDirectory);
-        localStorage.setItem('quote-export-directory', exportDirectory);
-        setQuoteStatus(`Sending quote request for ${path} to ${exportDirectory}...`, 'neutral');
-
-        try {
-            const controller = new AbortController();
-            timeoutId = setTimeout(() => controller.abort(), 90000);
-
-            const response = await fetch('/api/quote', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    original_path: path,
-                    export_directory: exportDirectory
-                }),
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            setQuoteStatus(`Backend responded for ${path}. Reading result...`, 'neutral');
-
-            const data = await response.json();
-
-            if (!response.ok || data.status !== 'success') {
-                throw new Error(data.error || 'Quote request failed');
-            }
-
-            quotedExhibits = quotedExhibits.filter(exhibit => exhibit.original_path !== data.original_path);
-            quotedExhibits.push({
-                original_path: data.original_path,
-                exhibit_name: data.exhibit_name,
-                source_sha256: data.source_sha256,
-                integrity_verified: data.integrity_verified,
-                copied_path: data.copied_path
-            });
-            persistQuotedExhibits();
-            renderReport();
-            switchTab('report');
-            setQuoteStatus(
-                `Quote completed: ${data.exhibit_name} was copied to ${data.copied_path}. Report manifest updated at ${data.manifest_path}.`,
-                'success'
-            );
-
-            const clipboardText = [
-                `Original path: ${data.original_path}`,
-                `Exhibit name: ${data.exhibit_name}`,
-                `SHA256: ${data.source_sha256}`,
-                `Copied path: ${data.copied_path}`,
-                `Integrity verified: ${data.integrity_verified}`
-            ].join('\n');
-
-            try {
-                await navigator.clipboard.writeText(clipboardText);
-            } catch (clipboardError) {
-                console.warn('Clipboard copy failed:', clipboardError);
-                setQuoteStatus(
-                    `Quote completed, but clipboard copy was blocked. File: ${data.exhibit_name}. Exported to ${data.copied_path}.`,
-                    'success'
-                );
-            }
-        } catch (err) {
-            const message = err.name === 'AbortError'
-                ? 'Quote request timed out after 90 seconds'
-                : err.message;
-            if (message.includes('export directory is not writable')) {
-                exportDirectory = "";
-                localStorage.removeItem('quote-export-directory');
-            }
-            setQuoteStatus(`Quote failed: ${message}`, 'error');
-            alert(`Quote failed: ${message}`);
-        } finally {
-            if (timeoutId !== null) {
-                clearTimeout(timeoutId);
-            }
-            if (button) {
-                button.disabled = false;
-                button.textContent = originalLabel;
-            }
-        }
+        verificationTableBody.innerHTML = "";
+        details.forEach(detail => {
+            const statusColor = detail.status === 'missing' ? '#ef4444' : detail.status === 'modified' ? '#f59e0b' : '#38bdf8';
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+            tr.innerHTML = `
+                <td style="padding: 0.75rem; font-weight: 700; color: ${statusColor}; text-transform: uppercase;">${escapeHtml(detail.status)}</td>
+                <td style="padding: 0.75rem; word-break: break-all;">${escapeHtml(detail.path)}</td>
+                <td style="padding: 0.75rem; font-family: monospace; color: var(--text-secondary); word-break: break-all;">${escapeHtml(detail.expected_sha256 || '-')}</td>
+                <td style="padding: 0.75rem; font-family: monospace; color: var(--text-secondary); word-break: break-all;">${escapeHtml(detail.actual_sha256 || '-')}</td>
+            `;
+            verificationTableBody.appendChild(tr);
+        });
     }
 
     function renderReport() {
@@ -544,14 +600,13 @@
         quotedExhibits.forEach((exhibit, index) => {
             const tr = document.createElement('tr');
             tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
-
             tr.innerHTML = `
-                <td style="padding: 0.75rem; font-weight: 600; color: var(--accent-color); font-size: 0.9rem; word-break: break-all;">${exhibit.exhibit_name}</td>
-                <td style="padding: 0.75rem; font-size: 0.9rem; word-break: break-all;">${exhibit.original_path}</td>
-                <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--text-secondary); word-break: break-all;">${exhibit.source_sha256}</td>
+                <td style="padding: 0.75rem; font-weight: 600; color: var(--accent-color); font-size: 0.9rem; word-break: break-all;">${escapeHtml(exhibit.exhibit_name)}</td>
+                <td style="padding: 0.75rem; font-size: 0.9rem; word-break: break-all;">${escapeHtml(exhibit.original_path)}</td>
+                <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--text-secondary); word-break: break-all;">${escapeHtml(exhibit.source_sha256)}</td>
                 <td style="padding: 0.75rem; font-size: 0.9rem; color: ${exhibit.integrity_verified ? 'var(--success-color)' : '#ef4444'}; font-weight: 600;">${exhibit.integrity_verified ? 'Verified' : 'Failed'}</td>
                 <td style="padding: 0.75rem;">
-                    <button class="btn" style="padding: 0.25rem 0.75rem; font-size: 0.8rem; background: #ef4444; border: none; border-radius: 4px; color: white; cursor: pointer;" onclick="removeQuote(${index})">Remove</button>
+                    <button class="btn" style="padding: 0.25rem 0.75rem; font-size: 0.8rem; background: #ef4444;" onclick="removeQuote(${index})">Remove</button>
                 </td>
             `;
             reportTableBody.appendChild(tr);
@@ -567,6 +622,15 @@
     // Initial load
     hydrateQuotedExhibits();
     exportDirectory = normalizeExportDirectory(localStorage.getItem('quote-export-directory') || "");
+
+    function escapeHtml(value) {
+        return String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#039;');
+    }
     loadArtifacts();
     renderReport();
 </script>
