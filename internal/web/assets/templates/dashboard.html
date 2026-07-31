@@ -872,10 +872,36 @@
         });
     }
 
-    window.removeQuote = function(index) {
-        quotedExhibits.splice(index, 1);
-        persistQuotedExhibits();
-        renderReport();
+    window.removeQuote = async function(index) {
+        const exhibit = quotedExhibits[index];
+        if (!exhibit) return;
+
+        try {
+            const response = await fetch('/api/quote/delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    export_directory: exportDirectory,
+                    original_path: exhibit.original_path,
+                    exhibit_name: exhibit.exhibit_name,
+                    copied_path: exhibit.copied_path
+                })
+            });
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data.error || 'Failed to remove exhibit from report manifest');
+            }
+
+            quotedExhibits.splice(index, 1);
+            persistQuotedExhibits();
+            renderReport();
+            setQuoteStatus(`Exhibit ${exhibit.exhibit_name || exhibit.original_path} was removed from report manifest and deleted from disk.`, 'success');
+        } catch (err) {
+            console.error('Failed to remove exhibit:', err);
+            alert(`Failed to remove exhibit: ${err.message}`);
+        }
     }
 
     // Initial load

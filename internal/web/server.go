@@ -93,6 +93,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/artifacts", s.handleArtifacts)
 	s.mux.HandleFunc("/api/import", s.handleImport)
 	s.mux.HandleFunc("/api/quote", s.handleQuote)
+	s.mux.HandleFunc("/api/quote/delete", s.handleQuoteDelete)
 	s.mux.HandleFunc("/api/verify", s.handleVerify)
 	s.mux.HandleFunc("/api/export/manifest", s.handleExportManifest)
 	s.mux.HandleFunc("/api/export/report.json", s.handleExportReportJSON)
@@ -571,6 +572,40 @@ func (s *Server) handleQuote(w http.ResponseWriter, r *http.Request) {
 		"copied_path":        result.CopiedPath,
 		"manifest_path":      result.ManifestPath,
 	})
+}
+
+type QuoteDeleteRequest struct {
+	ExportDirectory string `json:"export_directory"`
+	OriginalPath    string `json:"original_path"`
+	ExhibitName     string `json:"exhibit_name"`
+	CopiedPath      string `json:"copied_path"`
+}
+
+func (s *Server) handleQuoteDelete(w http.ResponseWriter, r *http.Request) {
+	writeJSONError := func(status int, message string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		json.NewEncoder(w).Encode(map[string]string{"error": message})
+	}
+
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		writeJSONError(http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req QuoteDeleteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := exporting.DeleteQuotedArtifact(req.ExportDirectory, req.OriginalPath, req.ExhibitName, req.CopiedPath); err != nil {
+		writeJSONError(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
 type VerificationResult struct {

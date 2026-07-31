@@ -163,3 +163,43 @@ func upsertExhibit(reportManifest *models.ReportManifest, exhibit models.ReportE
 	}
 	reportManifest.Exhibits = append(reportManifest.Exhibits, exhibit)
 }
+
+func DeleteQuotedArtifact(exportDirectory, originalPath, exhibitName, copiedPath string) error {
+	if exportDirectory == "" && copiedPath != "" {
+		exportDirectory = filepath.Dir(copiedPath)
+	}
+	if exportDirectory == "" {
+		return fmt.Errorf("export directory is required")
+	}
+
+	manifestPath := filepath.Join(exportDirectory, "report_manifest.json")
+	if existing, err := os.ReadFile(manifestPath); err == nil {
+		reportManifest := models.NewReportManifest()
+		if err := json.Unmarshal(existing, reportManifest); err == nil {
+			newExhibits := make([]models.ReportExhibit, 0, len(reportManifest.Exhibits))
+			for _, ex := range reportManifest.Exhibits {
+				if (originalPath != "" && ex.OriginalPath == originalPath) ||
+					(exhibitName != "" && ex.ExhibitName == exhibitName) {
+					continue
+				}
+				newExhibits = append(newExhibits, ex)
+			}
+			reportManifest.Exhibits = newExhibits
+			reportManifest.ExportMetadata.TotalExhibits = len(newExhibits)
+			reportManifest.ExportMetadata.ExportTimestamp = time.Now().UTC().Format(time.RFC3339)
+			_ = reportManifest.SaveToFile(manifestPath)
+		}
+	}
+
+	targetFile := copiedPath
+	if targetFile == "" && exhibitName != "" {
+		targetFile = filepath.Join(exportDirectory, exhibitName)
+	}
+	if targetFile != "" {
+		if err := os.Remove(targetFile); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to delete exhibit file copy: %w", err)
+		}
+	}
+
+	return nil
+}
