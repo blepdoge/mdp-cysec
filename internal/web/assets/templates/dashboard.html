@@ -156,7 +156,10 @@
     <div id="explorer-tab-content">
         <div class="artifact-explorer">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem; flex-wrap: wrap;">
-                <h3 style="font-size: 1.2rem; margin: 0;">Artifact explorer</h3>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <h3 style="font-size: 1.2rem; margin: 0;">Artifact explorer</h3>
+                    <button id="bulk-quote-btn" class="btn" disabled style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.9rem; font-size: 0.88rem; background: var(--accent-color); color: #000; font-weight: 600;" onclick="triggerBulkQuote()">Quote selected (0)</button>
+                </div>
                 <input type="text" id="search-input" placeholder="Search by name, path, or hash..." style="padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; width: 300px;">
             </div>
 
@@ -164,6 +167,7 @@
                 <table style="width: 100%; border-collapse: collapse; text-align: left;">
                     <thead>
                         <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            <th style="padding: 0.75rem; width: 40px; text-align: center;"><input type="checkbox" id="select-all-page" style="cursor: pointer; transform: scale(1.15);" title="Select all on this page" onchange="toggleSelectAllPage(this.checked)"></th>
                             <th style="padding: 0.75rem; color: var(--text-secondary);">Path</th>
                             <th style="padding: 0.75rem; color: var(--text-secondary);">SHA256</th>
                             <th style="padding: 0.75rem; color: var(--text-secondary);">Actions</th>
@@ -173,12 +177,9 @@
                 </table>
             </div>
 
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; flex-wrap: wrap; gap: 0.5rem;">
                 <span id="page-info" style="color: var(--text-secondary); font-size: 0.9rem;">Loading...</span>
-                <div style="display: flex; gap: 0.5rem;">
-                    <button id="prev-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Previous</button>
-                    <button id="next-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Next</button>
-                </div>
+                <div id="pagination-controls" style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;"></div>
             </div>
         </div>
     </div>
@@ -244,12 +245,12 @@
     let pendingQuotePath = "";
     let pendingQuoteButton = null;
     let exportPickerSelectedPath = "";
+    let pendingBulkQuote = false;
+    const selectedArtifactPaths = new Set();
     const quotedExhibitsStorageKey = 'quoted-exhibits';
 
     const searchInput = document.getElementById('search-input');
     const tableBody = document.getElementById('artifact-table-body');
-    const prevBtn = document.getElementById('prev-btn');
-    const nextBtn = document.getElementById('next-btn');
     const pageInfo = document.getElementById('page-info');
     const verifyBtn = document.getElementById('verify-btn');
     const verifyDirectoryInput = document.getElementById('verify-directory-input');
@@ -349,7 +350,12 @@
         }
 
         closeExportPicker();
-        quoteArtifact(pendingQuotePath, pendingQuoteButton, exportPickerSelectedPath);
+        if (pendingBulkQuote) {
+            pendingBulkQuote = false;
+            bulkQuoteSelectedArtifacts(Array.from(selectedArtifactPaths), exportPickerSelectedPath);
+        } else {
+            quoteArtifact(pendingQuotePath, pendingQuoteButton, exportPickerSelectedPath);
+        }
     });
 
     function setQuoteStatus(message, kind = 'neutral') {
@@ -383,18 +389,6 @@
             currentPage = 1;
             loadArtifacts();
         }, 300);
-    });
-
-    prevBtn.addEventListener('click', () => {
-        if (currentPage > 1) {
-            currentPage--;
-            loadArtifacts();
-        }
-    });
-
-    nextBtn.addEventListener('click', () => {
-        currentPage++;
-        loadArtifacts();
     });
 
     function openExportPicker(path, button) {
@@ -509,6 +503,188 @@
         runVerification(verifyDirectoryInput.value.trim());
     });
 
+    function toggleArtifactSelection(path, isChecked) {
+        if (isChecked) {
+            selectedArtifactPaths.add(path);
+        } else {
+            selectedArtifactPaths.delete(path);
+        }
+        updateSelectionUI();
+    }
+    window.toggleArtifactSelection = toggleArtifactSelection;
+
+    function toggleSelectAllPage(isChecked) {
+        loadedArtifacts.forEach(art => {
+            if (isChecked) {
+                selectedArtifactPaths.add(art.path);
+            } else {
+                selectedArtifactPaths.delete(art.path);
+            }
+        });
+        document.querySelectorAll('.artifact-row-cb').forEach(cb => {
+            cb.checked = isChecked;
+        });
+        updateSelectionUI();
+    }
+    window.toggleSelectAllPage = toggleSelectAllPage;
+
+    function updateSelectionUI() {
+        const count = selectedArtifactPaths.size;
+        const bulkBtn = document.getElementById('bulk-quote-btn');
+        if (bulkBtn) {
+            bulkBtn.textContent = `Quote selected (${count})`;
+            if (count > 0) {
+                bulkBtn.disabled = false;
+                bulkBtn.style.opacity = '1';
+                bulkBtn.style.cursor = 'pointer';
+            } else {
+                bulkBtn.disabled = true;
+                bulkBtn.style.opacity = '0.5';
+                bulkBtn.style.cursor = 'not-allowed';
+            }
+        }
+
+        const selectAllCb = document.getElementById('select-all-page');
+        if (selectAllCb && loadedArtifacts.length > 0) {
+            const allPageSelected = loadedArtifacts.every(art => selectedArtifactPaths.has(art.path));
+            selectAllCb.checked = allPageSelected;
+        }
+    }
+
+    function triggerBulkQuote() {
+        if (selectedArtifactPaths.size === 0) return;
+
+        if (hasExportDirectory()) {
+            bulkQuoteSelectedArtifacts(Array.from(selectedArtifactPaths), exportDirectory);
+            return;
+        }
+
+        pendingBulkQuote = true;
+        exportPickerModal.style.display = 'block';
+        exportDirectory = normalizeExportDirectory(localStorage.getItem('quote-export-directory') || exportDirectory);
+        loadExportDirectory("/");
+    }
+    window.triggerBulkQuote = triggerBulkQuote;
+
+    async function bulkQuoteSelectedArtifacts(pathsArray, directoryOverride) {
+        const chosenDirectory = (directoryOverride || exportDirectory || "").trim();
+        if (!chosenDirectory) {
+            setQuoteStatus("Please choose an export directory first.", 'error');
+            return;
+        }
+
+        const bulkBtn = document.getElementById('bulk-quote-btn');
+        if (bulkBtn) {
+            bulkBtn.disabled = true;
+            bulkBtn.textContent = "Quoting...";
+        }
+
+        exportDirectory = normalizeExportDirectory(chosenDirectory);
+        localStorage.setItem('quote-export-directory', exportDirectory);
+        setQuoteStatus(`Bulk quoting ${pathsArray.length} artifacts to ${exportDirectory}...`, 'neutral');
+
+        try {
+            const response = await fetch('/api/quote/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    original_paths: pathsArray,
+                    export_directory: exportDirectory
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data.error || 'Bulk quote request failed');
+            }
+
+            const results = data.results || [];
+            results.forEach(res => {
+                quotedExhibits = quotedExhibits.filter(exhibit => exhibit.original_path !== res.original_path);
+                quotedExhibits.push({
+                    original_path: res.original_path,
+                    exhibit_name: res.exhibit_name,
+                    source_sha256: res.source_sha256,
+                    integrity_verified: res.integrity_verified,
+                    copied_path: res.copied_path
+                });
+            });
+
+            persistQuotedExhibits();
+            renderReport();
+
+            setQuoteStatus(
+                `${data.total_quoted} files successfully quoted to ${exportDirectory}. Report manifest updated.`,
+                'success'
+            );
+
+            const clipboardLines = [
+                `Bulk Quote Summary (${data.total_quoted} exhibits exported to ${exportDirectory}):`,
+                ...results.map((res, i) => `${i + 1}. ${res.exhibit_name} | SHA256: ${res.source_sha256} | Path: ${res.copied_path}`)
+            ];
+
+            try {
+                await navigator.clipboard.writeText(clipboardLines.join('\n'));
+            } catch (clipboardError) {
+                console.warn('Clipboard copy failed:', clipboardError);
+            }
+
+            selectedArtifactPaths.clear();
+        } catch (err) {
+            setQuoteStatus(`Bulk quote failed: ${err.message}`, 'error');
+            alert(`Bulk quote failed: ${err.message}`);
+        } finally {
+            updateSelectionUI();
+        }
+    }
+
+    function renderPagination(page, totalPages) {
+        const container = document.getElementById('pagination-controls');
+        if (!container) return;
+        container.innerHTML = "";
+
+        function createBtn(label, targetPage, disabled = false, active = false) {
+            const btn = document.createElement('button');
+            btn.className = active ? 'btn' : 'btn btn-secondary';
+            btn.textContent = label;
+            btn.disabled = disabled;
+            btn.style.padding = '0.35rem 0.75rem';
+            btn.style.fontSize = '0.85rem';
+            if (active) {
+                btn.style.background = 'var(--accent-color)';
+                btn.style.color = '#000';
+                btn.style.fontWeight = '700';
+            }
+            btn.onclick = () => {
+                if (!disabled && targetPage !== currentPage) {
+                    currentPage = targetPage;
+                    loadArtifacts();
+                }
+            };
+            return btn;
+        }
+
+        // First page button (⏮)
+        container.appendChild(createBtn('⏮ First', 1, page === 1));
+
+        // Previous page button (◀)
+        container.appendChild(createBtn('◀ Prev', Math.max(1, page - 1), page === 1));
+
+        // Range of page numbers (2 before, current, 2 after)
+        const startPage = Math.max(1, page - 2);
+        const endPage = Math.min(totalPages, page + 2);
+
+        for (let p = startPage; p <= endPage; p++) {
+            container.appendChild(createBtn(String(p), p, false, p === page));
+        }
+
+        // Next page button (▶)
+        container.appendChild(createBtn('Next ▶', Math.min(totalPages, page + 1), page >= totalPages));
+
+        // Last page button (⏭)
+        container.appendChild(createBtn('Last ⏭', totalPages, page >= totalPages));
+    }
+
     function loadArtifacts() {
         const url = `/api/artifacts?page=${currentPage}&q=${encodeURIComponent(currentQuery)}`;
 
@@ -519,18 +695,22 @@
                 loadedArtifacts = data.artifacts || [];
 
                 if (loadedArtifacts.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No artifacts found.</td></tr>`;
+                    tableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No artifacts found.</td></tr>`;
                     pageInfo.innerText = "0 results";
-                    prevBtn.disabled = currentPage === 1;
-                    nextBtn.disabled = true;
+                    renderPagination(1, 1);
+                    updateSelectionUI();
                     return;
                 }
 
-                loadedArtifacts.forEach((art, index) => {
+                loadedArtifacts.forEach((art) => {
                     const tr = document.createElement('tr');
                     tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
                     const encodedPath = encodeURIComponent(art.path);
+                    const isChecked = selectedArtifactPaths.has(art.path);
                     tr.innerHTML = `
+                        <td style="padding: 0.75rem; text-align: center;">
+                            <input type="checkbox" class="artifact-row-cb" data-path="${encodedPath}" ${isChecked ? 'checked' : ''} onchange="toggleArtifactSelection(decodeURIComponent(this.getAttribute('data-path')), this.checked)" style="cursor: pointer; transform: scale(1.15);">
+                        </td>
                         <td style="padding: 0.75rem; word-break: break-all; font-size: 0.9rem;">📄 ${escapeHtml(art.path)}</td>
                         <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--accent-color);">${escapeHtml(art.sha256.substring(0, 16))}...</td>
                         <td style="padding: 0.75rem;">
@@ -542,9 +722,8 @@
 
                 const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
                 pageInfo.innerText = `Page ${data.page} of ${totalPages} (${data.total} total)`;
-
-                prevBtn.disabled = currentPage === 1;
-                nextBtn.disabled = currentPage >= totalPages;
+                renderPagination(data.page, totalPages);
+                updateSelectionUI();
             });
     }
 

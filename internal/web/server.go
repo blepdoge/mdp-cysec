@@ -93,6 +93,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/artifacts", s.handleArtifacts)
 	s.mux.HandleFunc("/api/import", s.handleImport)
 	s.mux.HandleFunc("/api/quote", s.handleQuote)
+	s.mux.HandleFunc("/api/quote/bulk", s.handleBulkQuote)
 	s.mux.HandleFunc("/api/quote/delete", s.handleQuoteDelete)
 	s.mux.HandleFunc("/api/verify", s.handleVerify)
 	s.mux.HandleFunc("/api/export/manifest", s.handleExportManifest)
@@ -571,6 +572,59 @@ func (s *Server) handleQuote(w http.ResponseWriter, r *http.Request) {
 		"integrity_verified": result.IntegrityVerified,
 		"copied_path":        result.CopiedPath,
 		"manifest_path":      result.ManifestPath,
+	})
+}
+
+type BulkQuoteRequest struct {
+	OriginalPaths   []string `json:"original_paths"`
+	ExportDirectory string   `json:"export_directory"`
+}
+
+func (s *Server) handleBulkQuote(w http.ResponseWriter, r *http.Request) {
+	writeJSONError := func(status int, message string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		json.NewEncoder(w).Encode(map[string]string{"error": message})
+	}
+
+	if r.Method != http.MethodPost {
+		writeJSONError(http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	if s.currentManifest == nil {
+		writeJSONError(http.StatusBadRequest, "No manifest loaded")
+		return
+	}
+
+	var req BulkQuoteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if len(req.OriginalPaths) == 0 || req.ExportDirectory == "" {
+		writeJSONError(http.StatusBadRequest, "original_paths and export_directory are required")
+		return
+	}
+
+	s.stateMu.Lock()
+	sourceRoot := s.evidenceDir
+	if sourceRoot == "" {
+		sourceRoot = s.rootDir
+	}
+	s.stateMu.Unlock()
+
+	results, err := exporting.QuoteArtifactsBulk(sourceRoot, req.OriginalPaths, req.ExportDirectory, s.currentManifest)
+	if err != nil {
+		writeJSONError(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":           "success",
+		"total_quoted":     len(results),
+		"results":          results,
+		"export_directory": req.ExportDirectory,
 	})
 }
 

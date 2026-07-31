@@ -53,3 +53,48 @@ func TestQuoteAndDeleteArtifact(t *testing.T) {
 		t.Fatalf("expected copied file %s to be deleted, but it still exists", result.CopiedPath)
 	}
 }
+
+func TestQuoteArtifactsBulk(t *testing.T) {
+	tempDir := t.TempDir()
+
+	file1 := filepath.Join(tempDir, "file1.txt")
+	content1 := []byte("hello 1")
+	_ = os.WriteFile(file1, content1, 0644)
+
+	file2 := filepath.Join(tempDir, "file2.txt")
+	content2 := []byte("hello 2")
+	_ = os.WriteFile(file2, content2, 0644)
+
+	manifest := &models.MasterManifest{
+		Artifacts: []models.Artifact{
+			{
+				Name:      "file1.txt",
+				Path:      file1,
+				SHA256:    "08e7a08b5be4c70d49f059a4b86c382b6b060d4b9681121d58cfb96b349d592b", // sha256 of "hello 1"
+				SizeBytes: int64(len(content1)),
+			},
+			{
+				Name:      "file2.txt",
+				Path:      file2,
+				SHA256:    "e6f53a48e89ebf9f59f63cf6efd1b82e21b764619d08e5e89a54483788a8eb68", // sha256 of "hello 2"
+				SizeBytes: int64(len(content2)),
+			},
+		},
+	}
+
+	exportDir := filepath.Join(tempDir, "bulk_export")
+	results, err := QuoteArtifactsBulk(tempDir, []string{file1, file2}, exportDir, manifest)
+	if err != nil {
+		t.Fatalf("QuoteArtifactsBulk failed: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+
+	for _, res := range results {
+		if _, err := os.Stat(res.CopiedPath); os.IsNotExist(err) {
+			t.Fatalf("expected copied file at %s, but not found", res.CopiedPath)
+		}
+	}
+}
