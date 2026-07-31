@@ -618,13 +618,27 @@
                 'success'
             );
 
-            const clipboardLines = [
-                `Bulk Quote Summary (${data.total_quoted} exhibits exported to ${exportDirectory}):`,
-                ...results.map((res, i) => `${i + 1}. ${res.exhibit_name} | SHA256: ${res.source_sha256} | Path: ${res.copied_path}`)
-            ];
+            function formatCSVField(val) {
+                const str = String(val === undefined || val === null ? '' : val);
+                if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                    return `"${str.replaceAll('"', '""')}"`;
+                }
+                return str;
+            }
+
+            const csvHeader = "original_path,exhibit_name,source_sha256,copied_path,integrity_verified";
+            const csvRows = results.map(res => [
+                formatCSVField(res.original_path),
+                formatCSVField(res.exhibit_name),
+                formatCSVField(res.source_sha256),
+                formatCSVField(res.copied_path),
+                formatCSVField(res.integrity_verified)
+            ].join(','));
+
+            const clipboardCSV = [csvHeader, ...csvRows].join('\n');
 
             try {
-                await navigator.clipboard.writeText(clipboardLines.join('\n'));
+                await navigator.clipboard.writeText(clipboardCSV);
             } catch (clipboardError) {
                 console.warn('Clipboard copy failed:', clipboardError);
             }
