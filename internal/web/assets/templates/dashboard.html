@@ -134,6 +134,24 @@
         </div>
     </div>
 
+    <div id="verification-detail-modal" style="display:none; position: fixed; inset: 0; background: rgba(2, 6, 23, 0.82); backdrop-filter: blur(8px); z-index: 1000; padding: 2rem; overflow-y: auto;">
+        <div class="glass-panel" style="max-width: 750px; margin: 2rem auto; border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; background: rgba(15, 23, 42, 0.95); padding: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1rem; margin-bottom: 1rem;">
+                <div>
+                    <h3 style="margin: 0 0 0.4rem 0; font-size: 1.3rem;" id="ver-modal-title">Verification Details</h3>
+                    <div id="ver-modal-badges" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
+                </div>
+                <button onclick="closeVerificationDetailModal()" class="btn btn-secondary" style="padding: 0.3rem 0.75rem; font-size: 1rem;">✕</button>
+            </div>
+            
+            <div id="ver-modal-body" style="display: flex; flex-direction: column; gap: 1.25rem;"></div>
+
+            <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end;">
+                <button onclick="closeVerificationDetailModal()" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Tab Contents -->
     <div id="explorer-tab-content">
         <div class="artifact-explorer">
@@ -666,6 +684,136 @@
             });
     }
 
+    function formatBytes(bytes) {
+        if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 bytes';
+        if (bytes === 0) return '0 bytes';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(Math.abs(bytes)) / Math.log(k));
+        const val = (bytes / Math.pow(k, i)).toFixed(2);
+        return `${val} ${sizes[i]} (${bytes.toLocaleString()} bytes)`;
+    }
+
+    function openVerificationDetailModal(detail) {
+        const modal = document.getElementById('verification-detail-modal');
+        const badges = document.getElementById('ver-modal-badges');
+        const body = document.getElementById('ver-modal-body');
+
+        const statusColor = detail.status === 'missing' ? '#ef4444' : detail.status === 'modified' ? '#f59e0b' : '#38bdf8';
+        let badgesHtml = `<span style="background: ${statusColor}; color: #000; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 700; font-size: 0.75rem; text-transform: uppercase;">${escapeHtml(detail.status)}</span>`;
+
+        if (detail.is_renamed) {
+            badgesHtml += `<span style="background: rgba(168, 85, 247, 0.25); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 600; font-size: 0.75rem;">🏷️ RENAMED</span>`;
+        }
+        if (detail.is_location_changed) {
+            badgesHtml += `<span style="background: rgba(59, 130, 246, 0.25); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 600; font-size: 0.75rem;">📍 LOCATION CHANGED</span>`;
+        }
+
+        badges.innerHTML = badgesHtml;
+
+        const expSize = detail.expected_size_bytes || 0;
+        const actSize = detail.actual_size_bytes || 0;
+        const diff = actSize - expSize;
+
+        let sizeComparisonHtml = '';
+        if (detail.status === 'missing') {
+            sizeComparisonHtml = `
+                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 0.85rem;">
+                    <div style="font-weight: 600; color: #fca5a5; margin-bottom: 0.3rem;">Size Comparison (Before vs After)</div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">
+                        Before: <strong style="color: white;">${formatBytes(expSize)}</strong> | After: <strong style="color: #ef4444;">0 bytes (File Missing)</strong>
+                    </div>
+                </div>
+            `;
+        } else if (detail.status === 'extra') {
+            sizeComparisonHtml = `
+                <div style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 0.85rem;">
+                    <div style="font-weight: 600; color: #7dd3fc; margin-bottom: 0.3rem;">Size Comparison (Before vs After)</div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">
+                        Before: <strong style="color: white;">0 bytes (Not in manifest)</strong> | After: <strong style="color: #38bdf8;">${formatBytes(actSize)}</strong>
+                    </div>
+                </div>
+            `;
+        } else {
+            let diffLabel = '';
+            let diffColor = '';
+            if (diff > 0) {
+                diffLabel = `+${formatBytes(diff)} — Content Added`;
+                diffColor = '#f59e0b';
+            } else if (diff < 0) {
+                diffLabel = `-${formatBytes(Math.abs(diff))} — Content Removed`;
+                diffColor = '#ef4444';
+            } else {
+                diffLabel = '0 bytes — Size Unchanged';
+                diffColor = 'var(--success-color)';
+            }
+
+            sizeComparisonHtml = `
+                <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 0.85rem;">
+                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.4rem;">Size Comparison (Before vs After)</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.9rem; margin-bottom: 0.4rem;">
+                        <div>Before (Manifest): <strong style="color: white;">${formatBytes(expSize)}</strong></div>
+                        <div>After (Verification): <strong style="color: white;">${formatBytes(actSize)}</strong></div>
+                    </div>
+                    <div style="font-size: 0.9rem; padding-top: 0.4rem; border-top: 1px dashed rgba(255,255,255,0.1); color: ${diffColor}; font-weight: 600;">
+                        Difference: ${diffLabel}
+                    </div>
+                </div>
+            `;
+        }
+
+        const expectedPath = detail.expected_path || detail.path || '-';
+        const actualPath = detail.actual_path || detail.path || '-';
+        const expectedName = detail.expected_name || (expectedPath !== '-' ? expectedPath.split(/[/\\]/).pop() : '-');
+        const actualName = detail.actual_name || (actualPath !== '-' ? actualPath.split(/[/\\]/).pop() : '-');
+
+        const pathsHtml = `
+            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 0.85rem; display: flex; flex-direction: column; gap: 0.6rem;">
+                <div style="font-weight: 600; color: var(--text-primary);">Path & File Name Details</div>
+                <div style="font-size: 0.88rem;">
+                    <span style="color: var(--text-secondary); display: inline-block; width: 130px;">Expected Path:</span>
+                    <code style="color: var(--accent-color); word-break: break-all;">${escapeHtml(expectedPath)}</code>
+                </div>
+                <div style="font-size: 0.88rem;">
+                    <span style="color: var(--text-secondary); display: inline-block; width: 130px;">Actual Path:</span>
+                    <code style="color: var(--accent-color); word-break: break-all;">${escapeHtml(actualPath)}</code>
+                </div>
+                ${detail.is_renamed ? `
+                <div style="font-size: 0.88rem; padding-top: 0.4rem; border-top: 1px dashed rgba(255,255,255,0.1);">
+                    <span style="color: #c084fc; font-weight: 600;">Renaming Detail:</span>
+                    File was renamed from <code style="color: #e9d5ff;">${escapeHtml(expectedName)}</code> to <code style="color: #e9d5ff;">${escapeHtml(actualName)}</code>
+                </div>` : ''}
+                ${detail.is_location_changed ? `
+                <div style="font-size: 0.88rem; padding-top: 0.4rem; border-top: 1px dashed rgba(255,255,255,0.1);">
+                    <span style="color: #60a5fa; font-weight: 600;">Location Detail:</span>
+                    File location moved from <code style="color: #bfdbfe;">${escapeHtml(expectedPath)}</code> to <code style="color: #bfdbfe;">${escapeHtml(actualPath)}</code>
+                </div>` : ''}
+            </div>
+        `;
+
+        const hashesHtml = `
+            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 0.85rem; display: flex; flex-direction: column; gap: 0.6rem;">
+                <div style="font-weight: 600; color: var(--text-primary);">SHA256 Hash Comparison</div>
+                <div style="font-size: 0.85rem;">
+                    <div style="color: var(--text-secondary); margin-bottom: 0.2rem;">Expected SHA256 (Manifest):</div>
+                    <code style="word-break: break-all; color: var(--accent-color);">${escapeHtml(detail.expected_sha256 || 'N/A')}</code>
+                </div>
+                <div style="font-size: 0.85rem;">
+                    <div style="color: var(--text-secondary); margin-bottom: 0.2rem;">Actual SHA256 (Disk Verification):</div>
+                    <code style="word-break: break-all; color: ${detail.expected_sha256 && detail.actual_sha256 && detail.expected_sha256 === detail.actual_sha256 ? 'var(--success-color)' : '#ef4444'};">${escapeHtml(detail.actual_sha256 || 'N/A')}</code>
+                </div>
+            </div>
+        `;
+
+        body.innerHTML = sizeComparisonHtml + pathsHtml + hashesHtml;
+        modal.style.display = 'block';
+    }
+
+    function closeVerificationDetailModal() {
+        document.getElementById('verification-detail-modal').style.display = 'none';
+    }
+    window.closeVerificationDetailModal = closeVerificationDetailModal;
+
     function renderVerificationResults(data) {
         verificationEmpty.style.display = 'none';
         verificationPanel.style.display = 'block';
@@ -684,6 +832,9 @@
             const statusColor = detail.status === 'missing' ? '#ef4444' : detail.status === 'modified' ? '#f59e0b' : '#38bdf8';
             const tr = document.createElement('tr');
             tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+            tr.style.cursor = "pointer";
+            tr.title = "Click line for detailed information";
+            tr.onclick = () => openVerificationDetailModal(detail);
             tr.innerHTML = `
                 <td style="padding: 0.75rem; font-weight: 700; color: ${statusColor}; text-transform: uppercase;">${escapeHtml(detail.status)}</td>
                 <td style="padding: 0.75rem; word-break: break-all;">${escapeHtml(detail.path)}</td>

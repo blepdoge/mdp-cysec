@@ -586,10 +586,18 @@ type VerificationResult struct {
 }
 
 type VerificationDetail struct {
-	Status         string `json:"status"`
-	Path           string `json:"path"`
-	ExpectedSHA256 string `json:"expected_sha256,omitempty"`
-	ActualSHA256   string `json:"actual_sha256,omitempty"`
+	Status            string `json:"status"`
+	Path              string `json:"path"`
+	ExpectedPath      string `json:"expected_path,omitempty"`
+	ActualPath        string `json:"actual_path,omitempty"`
+	ExpectedName      string `json:"expected_name,omitempty"`
+	ActualName        string `json:"actual_name,omitempty"`
+	ExpectedSHA256    string `json:"expected_sha256,omitempty"`
+	ActualSHA256      string `json:"actual_sha256,omitempty"`
+	ExpectedSizeBytes int64  `json:"expected_size_bytes"`
+	ActualSizeBytes   int64  `json:"actual_size_bytes"`
+	IsRenamed         bool   `json:"is_renamed"`
+	IsLocationChanged bool   `json:"is_location_changed"`
 }
 
 type VerifyRequest struct {
@@ -665,10 +673,18 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 			if current.SHA256 != expected.SHA256 {
 				result.Modified++
 				result.Details = append(result.Details, VerificationDetail{
-					Status:         "modified",
-					Path:           expected.Path,
-					ExpectedSHA256: expected.SHA256,
-					ActualSHA256:   current.SHA256,
+					Status:            "modified",
+					Path:              expected.Path,
+					ExpectedPath:      expected.Path,
+					ActualPath:        current.Path,
+					ExpectedName:      expected.Name,
+					ActualName:        current.Name,
+					ExpectedSHA256:    expected.SHA256,
+					ActualSHA256:      current.SHA256,
+					ExpectedSizeBytes: expected.SizeBytes,
+					ActualSizeBytes:   current.SizeBytes,
+					IsRenamed:         expected.Name != current.Name,
+					IsLocationChanged: expected.Path != current.Path,
 				})
 			} else {
 				result.Verified++
@@ -691,19 +707,34 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 			currentByHash[expected.SHA256] = candidates[1:]
 			delete(unmatchedCurrent, current.Path)
 
+			isRenamed := expected.Name != current.Name
+			isLocChanged := expected.Path != current.Path
+
 			result.Modified++
 			result.Details = append(result.Details, VerificationDetail{
-				Status:         "modified",
-				Path:           fmt.Sprintf("%s -> %s", expected.Path, current.Path),
-				ExpectedSHA256: expected.SHA256,
-				ActualSHA256:   current.SHA256,
+				Status:            "modified",
+				Path:              fmt.Sprintf("%s -> %s", expected.Path, current.Path),
+				ExpectedPath:      expected.Path,
+				ActualPath:        current.Path,
+				ExpectedName:      expected.Name,
+				ActualName:        current.Name,
+				ExpectedSHA256:    expected.SHA256,
+				ActualSHA256:      current.SHA256,
+				ExpectedSizeBytes: expected.SizeBytes,
+				ActualSizeBytes:   current.SizeBytes,
+				IsRenamed:         isRenamed,
+				IsLocationChanged: isLocChanged,
 			})
 		} else {
 			result.Missing++
 			result.Details = append(result.Details, VerificationDetail{
-				Status:         "missing",
-				Path:           expected.Path,
-				ExpectedSHA256: expected.SHA256,
+				Status:            "missing",
+				Path:              expected.Path,
+				ExpectedPath:      expected.Path,
+				ExpectedName:      expected.Name,
+				ExpectedSHA256:    expected.SHA256,
+				ExpectedSizeBytes: expected.SizeBytes,
+				ActualSizeBytes:   0,
 			})
 		}
 	}
@@ -711,9 +742,13 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 	for _, current := range unmatchedCurrent {
 		result.Extra++
 		result.Details = append(result.Details, VerificationDetail{
-			Status:       "extra",
-			Path:         current.Path,
-			ActualSHA256: current.SHA256,
+			Status:            "extra",
+			Path:              current.Path,
+			ActualPath:        current.Path,
+			ActualName:        current.Name,
+			ActualSHA256:      current.SHA256,
+			ExpectedSizeBytes: 0,
+			ActualSizeBytes:   current.SizeBytes,
 		})
 	}
 
