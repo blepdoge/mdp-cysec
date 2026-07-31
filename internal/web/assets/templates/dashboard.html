@@ -612,6 +612,7 @@
 
             persistQuotedExhibits();
             renderReport();
+            updateQuotedMarkers();
 
             setQuoteStatus(
                 `${data.total_quoted} files successfully quoted to ${exportDirectory}. Report manifest updated.`,
@@ -699,6 +700,29 @@
         container.appendChild(createBtn('Last ⏭', totalPages, page >= totalPages));
     }
 
+    function isArtifactQuoted(path) {
+        if (!path || !quotedExhibits || !quotedExhibits.length) return false;
+        return quotedExhibits.some(ex => ex && ex.original_path === path);
+    }
+
+    function updateQuotedMarkers() {
+        if (!tableBody || !loadedArtifacts || !loadedArtifacts.length) return;
+        const rows = tableBody.children;
+        loadedArtifacts.forEach((art, index) => {
+            const tr = rows[index];
+            if (!tr) return;
+            const pathCell = tr.children[1];
+            if (!pathCell) return;
+
+            const isQuoted = isArtifactQuoted(art.path);
+            const quotedMarker = isQuoted
+                ? `<span class="quoted-badge" style="background: rgba(16, 185, 129, 0.15); color: var(--success-color); border: 1px solid rgba(16, 185, 129, 0.3); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem; display: inline-flex; align-items: center; gap: 0.25rem;">📌 Quoted</span>`
+                : '';
+
+            pathCell.innerHTML = `📄 ${escapeHtml(art.path)} ${quotedMarker}`;
+        });
+    }
+
     function loadArtifacts() {
         const url = `/api/artifacts?page=${currentPage}&q=${encodeURIComponent(currentQuery)}`;
 
@@ -721,11 +745,18 @@
                     tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
                     const encodedPath = encodeURIComponent(art.path);
                     const isChecked = selectedArtifactPaths.has(art.path);
+                    const isQuoted = isArtifactQuoted(art.path);
+                    const quotedMarker = isQuoted
+                        ? `<span class="quoted-badge" style="background: rgba(16, 185, 129, 0.15); color: var(--success-color); border: 1px solid rgba(16, 185, 129, 0.3); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem; display: inline-flex; align-items: center; gap: 0.25rem;">📌 Quoted</span>`
+                        : '';
+
                     tr.innerHTML = `
                         <td style="padding: 0.75rem; text-align: center;">
                             <input type="checkbox" class="artifact-row-cb" data-path="${encodedPath}" ${isChecked ? 'checked' : ''} onchange="toggleArtifactSelection(decodeURIComponent(this.getAttribute('data-path')), this.checked)" style="cursor: pointer; transform: scale(1.15);">
                         </td>
-                        <td style="padding: 0.75rem; word-break: break-all; font-size: 0.9rem;">📄 ${escapeHtml(art.path)}</td>
+                        <td style="padding: 0.75rem; word-break: break-all; font-size: 0.9rem;">
+                            📄 ${escapeHtml(art.path)} ${quotedMarker}
+                        </td>
                         <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--accent-color);">${escapeHtml(art.sha256.substring(0, 16))}...</td>
                         <td style="padding: 0.75rem;">
                             <button class="btn btn-secondary quote-btn" data-original-path="${encodedPath}" onclick="quoteSelectedArtifact(decodeURIComponent(this.getAttribute('data-original-path')), this)" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Quote</button>
@@ -798,6 +829,7 @@
             });
             persistQuotedExhibits();
             renderReport();
+            updateQuotedMarkers();
             setQuoteStatus(
                 `Quote completed: ${data.exhibit_name} was copied to ${data.copied_path}. Report manifest updated at ${data.manifest_path}.`,
                 'success'
@@ -1089,6 +1121,7 @@
             quotedExhibits.splice(index, 1);
             persistQuotedExhibits();
             renderReport();
+            updateQuotedMarkers();
             setQuoteStatus(`Exhibit ${exhibit.exhibit_name || exhibit.original_path} was removed from report manifest and deleted from disk.`, 'success');
         } catch (err) {
             console.error('Failed to remove exhibit:', err);
