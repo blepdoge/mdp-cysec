@@ -134,11 +134,32 @@
         </div>
     </div>
 
+    <div id="verification-detail-modal" style="display:none; position: fixed; inset: 0; background: rgba(2, 6, 23, 0.82); backdrop-filter: blur(8px); z-index: 1000; padding: 2rem; overflow-y: auto;">
+        <div class="glass-panel" style="max-width: 750px; margin: 2rem auto; border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; background: rgba(15, 23, 42, 0.95); padding: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1rem; margin-bottom: 1rem;">
+                <div>
+                    <h3 style="margin: 0 0 0.4rem 0; font-size: 1.3rem;" id="ver-modal-title">Verification details</h3>
+                    <div id="ver-modal-badges" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
+                </div>
+                <button onclick="closeVerificationDetailModal()" class="btn btn-secondary" style="padding: 0.3rem 0.75rem; font-size: 1rem;">✕</button>
+            </div>
+            
+            <div id="ver-modal-body" style="display: flex; flex-direction: column; gap: 1.25rem;"></div>
+
+            <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end;">
+                <button onclick="closeVerificationDetailModal()" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Tab Contents -->
     <div id="explorer-tab-content">
         <div class="artifact-explorer">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem; flex-wrap: wrap;">
-                <h3 style="font-size: 1.2rem; margin: 0;">Artifact explorer</h3>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <h3 style="font-size: 1.2rem; margin: 0;">Artifact explorer</h3>
+                    <button id="bulk-quote-btn" class="btn" disabled style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.9rem; font-size: 0.88rem; background: var(--accent-color); color: #000; font-weight: 600;" onclick="triggerBulkQuote()">Quote selected (0)</button>
+                </div>
                 <input type="text" id="search-input" placeholder="Search by name, path, or hash..." style="padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; width: 300px;">
             </div>
 
@@ -146,6 +167,7 @@
                 <table style="width: 100%; border-collapse: collapse; text-align: left;">
                     <thead>
                         <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            <th style="padding: 0.75rem; width: 40px; text-align: center;"><input type="checkbox" id="select-all-page" style="cursor: pointer; transform: scale(1.15);" title="Select all on this page" onchange="toggleSelectAllPage(this.checked)"></th>
                             <th style="padding: 0.75rem; color: var(--text-secondary);">Path</th>
                             <th style="padding: 0.75rem; color: var(--text-secondary);">SHA256</th>
                             <th style="padding: 0.75rem; color: var(--text-secondary);">Actions</th>
@@ -155,12 +177,9 @@
                 </table>
             </div>
 
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; flex-wrap: wrap; gap: 0.5rem;">
                 <span id="page-info" style="color: var(--text-secondary); font-size: 0.9rem;">Loading...</span>
-                <div style="display: flex; gap: 0.5rem;">
-                    <button id="prev-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Previous</button>
-                    <button id="next-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Next</button>
-                </div>
+                <div id="pagination-controls" style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;"></div>
             </div>
         </div>
     </div>
@@ -226,12 +245,12 @@
     let pendingQuotePath = "";
     let pendingQuoteButton = null;
     let exportPickerSelectedPath = "";
+    let pendingBulkQuote = false;
+    const selectedArtifactPaths = new Set();
     const quotedExhibitsStorageKey = 'quoted-exhibits';
 
     const searchInput = document.getElementById('search-input');
     const tableBody = document.getElementById('artifact-table-body');
-    const prevBtn = document.getElementById('prev-btn');
-    const nextBtn = document.getElementById('next-btn');
     const pageInfo = document.getElementById('page-info');
     const verifyBtn = document.getElementById('verify-btn');
     const verifyDirectoryInput = document.getElementById('verify-directory-input');
@@ -331,7 +350,12 @@
         }
 
         closeExportPicker();
-        quoteArtifact(pendingQuotePath, pendingQuoteButton, exportPickerSelectedPath);
+        if (pendingBulkQuote) {
+            pendingBulkQuote = false;
+            bulkQuoteSelectedArtifacts(Array.from(selectedArtifactPaths), exportPickerSelectedPath);
+        } else {
+            quoteArtifact(pendingQuotePath, pendingQuoteButton, exportPickerSelectedPath);
+        }
     });
 
     function setQuoteStatus(message, kind = 'neutral') {
@@ -365,18 +389,6 @@
             currentPage = 1;
             loadArtifacts();
         }, 300);
-    });
-
-    prevBtn.addEventListener('click', () => {
-        if (currentPage > 1) {
-            currentPage--;
-            loadArtifacts();
-        }
-    });
-
-    nextBtn.addEventListener('click', () => {
-        currentPage++;
-        loadArtifacts();
     });
 
     function openExportPicker(path, button) {
@@ -491,6 +503,226 @@
         runVerification(verifyDirectoryInput.value.trim());
     });
 
+    function toggleArtifactSelection(path, isChecked) {
+        if (isChecked) {
+            selectedArtifactPaths.add(path);
+        } else {
+            selectedArtifactPaths.delete(path);
+        }
+        updateSelectionUI();
+    }
+    window.toggleArtifactSelection = toggleArtifactSelection;
+
+    function toggleSelectAllPage(isChecked) {
+        loadedArtifacts.forEach(art => {
+            if (isChecked) {
+                selectedArtifactPaths.add(art.path);
+            } else {
+                selectedArtifactPaths.delete(art.path);
+            }
+        });
+        document.querySelectorAll('.artifact-row-cb').forEach(cb => {
+            cb.checked = isChecked;
+        });
+        updateSelectionUI();
+    }
+    window.toggleSelectAllPage = toggleSelectAllPage;
+
+    function updateSelectionUI() {
+        const count = selectedArtifactPaths.size;
+        const bulkBtn = document.getElementById('bulk-quote-btn');
+        if (bulkBtn) {
+            bulkBtn.textContent = `Quote selected (${count})`;
+            if (count > 0) {
+                bulkBtn.disabled = false;
+                bulkBtn.style.opacity = '1';
+                bulkBtn.style.cursor = 'pointer';
+            } else {
+                bulkBtn.disabled = true;
+                bulkBtn.style.opacity = '0.5';
+                bulkBtn.style.cursor = 'not-allowed';
+            }
+        }
+
+        const selectAllCb = document.getElementById('select-all-page');
+        if (selectAllCb && loadedArtifacts.length > 0) {
+            const allPageSelected = loadedArtifacts.every(art => selectedArtifactPaths.has(art.path));
+            selectAllCb.checked = allPageSelected;
+        }
+    }
+
+    function triggerBulkQuote() {
+        if (selectedArtifactPaths.size === 0) return;
+
+        if (hasExportDirectory()) {
+            bulkQuoteSelectedArtifacts(Array.from(selectedArtifactPaths), exportDirectory);
+            return;
+        }
+
+        pendingBulkQuote = true;
+        exportPickerModal.style.display = 'block';
+        exportDirectory = normalizeExportDirectory(localStorage.getItem('quote-export-directory') || exportDirectory);
+        loadExportDirectory("/");
+    }
+    window.triggerBulkQuote = triggerBulkQuote;
+
+    async function bulkQuoteSelectedArtifacts(pathsArray, directoryOverride) {
+        const chosenDirectory = (directoryOverride || exportDirectory || "").trim();
+        if (!chosenDirectory) {
+            setQuoteStatus("Please choose an export directory first.", 'error');
+            return;
+        }
+
+        const bulkBtn = document.getElementById('bulk-quote-btn');
+        if (bulkBtn) {
+            bulkBtn.disabled = true;
+            bulkBtn.textContent = "Quoting...";
+        }
+
+        exportDirectory = normalizeExportDirectory(chosenDirectory);
+        localStorage.setItem('quote-export-directory', exportDirectory);
+        setQuoteStatus(`Bulk quoting ${pathsArray.length} artifacts to ${exportDirectory}...`, 'neutral');
+
+        try {
+            const response = await fetch('/api/quote/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    original_paths: pathsArray,
+                    export_directory: exportDirectory
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data.error || 'Bulk quote request failed');
+            }
+
+            const results = data.results || [];
+            results.forEach(res => {
+                quotedExhibits = quotedExhibits.filter(exhibit => exhibit.original_path !== res.original_path);
+                quotedExhibits.push({
+                    original_path: res.original_path,
+                    exhibit_name: res.exhibit_name,
+                    source_sha256: res.source_sha256,
+                    integrity_verified: res.integrity_verified,
+                    copied_path: res.copied_path
+                });
+            });
+
+            persistQuotedExhibits();
+            renderReport();
+            updateQuotedMarkers();
+
+            setQuoteStatus(
+                `${data.total_quoted} files successfully quoted to ${exportDirectory}. Report manifest updated.`,
+                'success'
+            );
+
+            function formatCSVField(val) {
+                const str = String(val === undefined || val === null ? '' : val);
+                if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                    return `"${str.replaceAll('"', '""')}"`;
+                }
+                return str;
+            }
+
+            const csvHeader = "original_path,exhibit_name,source_sha256,copied_path,integrity_verified";
+            const csvRows = results.map(res => [
+                formatCSVField(res.original_path),
+                formatCSVField(res.exhibit_name),
+                formatCSVField(res.source_sha256),
+                formatCSVField(res.copied_path),
+                formatCSVField(res.integrity_verified)
+            ].join(','));
+
+            const clipboardCSV = [csvHeader, ...csvRows].join('\n');
+
+            try {
+                await navigator.clipboard.writeText(clipboardCSV);
+            } catch (clipboardError) {
+                console.warn('Clipboard copy failed:', clipboardError);
+            }
+
+            selectedArtifactPaths.clear();
+        } catch (err) {
+            setQuoteStatus(`Bulk quote failed: ${err.message}`, 'error');
+            alert(`Bulk quote failed: ${err.message}`);
+        } finally {
+            updateSelectionUI();
+        }
+    }
+
+    function renderPagination(page, totalPages) {
+        const container = document.getElementById('pagination-controls');
+        if (!container) return;
+        container.innerHTML = "";
+
+        function createBtn(label, targetPage, disabled = false, active = false) {
+            const btn = document.createElement('button');
+            btn.className = active ? 'btn' : 'btn btn-secondary';
+            btn.textContent = label;
+            btn.disabled = disabled;
+            btn.style.padding = '0.35rem 0.75rem';
+            btn.style.fontSize = '0.85rem';
+            if (active) {
+                btn.style.background = 'var(--accent-color)';
+                btn.style.color = '#000';
+                btn.style.fontWeight = '700';
+            }
+            btn.onclick = () => {
+                if (!disabled && targetPage !== currentPage) {
+                    currentPage = targetPage;
+                    loadArtifacts();
+                }
+            };
+            return btn;
+        }
+
+        // First page button (⏮)
+        container.appendChild(createBtn('⏮ First', 1, page === 1));
+
+        // Previous page button (◀)
+        container.appendChild(createBtn('◀ Prev', Math.max(1, page - 1), page === 1));
+
+        // Range of page numbers (2 before, current, 2 after)
+        const startPage = Math.max(1, page - 2);
+        const endPage = Math.min(totalPages, page + 2);
+
+        for (let p = startPage; p <= endPage; p++) {
+            container.appendChild(createBtn(String(p), p, false, p === page));
+        }
+
+        // Next page button (▶)
+        container.appendChild(createBtn('Next ▶', Math.min(totalPages, page + 1), page >= totalPages));
+
+        // Last page button (⏭)
+        container.appendChild(createBtn('Last ⏭', totalPages, page >= totalPages));
+    }
+
+    function isArtifactQuoted(path) {
+        if (!path || !quotedExhibits || !quotedExhibits.length) return false;
+        return quotedExhibits.some(ex => ex && ex.original_path === path);
+    }
+
+    function updateQuotedMarkers() {
+        if (!tableBody || !loadedArtifacts || !loadedArtifacts.length) return;
+        const rows = tableBody.children;
+        loadedArtifacts.forEach((art, index) => {
+            const tr = rows[index];
+            if (!tr) return;
+            const pathCell = tr.children[1];
+            if (!pathCell) return;
+
+            const isQuoted = isArtifactQuoted(art.path);
+            const quotedMarker = isQuoted
+                ? `<span class="quoted-badge" style="background: rgba(16, 185, 129, 0.15); color: var(--success-color); border: 1px solid rgba(16, 185, 129, 0.3); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem; display: inline-flex; align-items: center; gap: 0.25rem;">📌 Quoted</span>`
+                : '';
+
+            pathCell.innerHTML = `📄 ${escapeHtml(art.path)} ${quotedMarker}`;
+        });
+    }
+
     function loadArtifacts() {
         const url = `/api/artifacts?page=${currentPage}&q=${encodeURIComponent(currentQuery)}`;
 
@@ -501,19 +733,30 @@
                 loadedArtifacts = data.artifacts || [];
 
                 if (loadedArtifacts.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No artifacts found.</td></tr>`;
+                    tableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No artifacts found.</td></tr>`;
                     pageInfo.innerText = "0 results";
-                    prevBtn.disabled = currentPage === 1;
-                    nextBtn.disabled = true;
+                    renderPagination(1, 1);
+                    updateSelectionUI();
                     return;
                 }
 
-                loadedArtifacts.forEach((art, index) => {
+                loadedArtifacts.forEach((art) => {
                     const tr = document.createElement('tr');
                     tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
                     const encodedPath = encodeURIComponent(art.path);
+                    const isChecked = selectedArtifactPaths.has(art.path);
+                    const isQuoted = isArtifactQuoted(art.path);
+                    const quotedMarker = isQuoted
+                        ? `<span class="quoted-badge" style="background: rgba(16, 185, 129, 0.15); color: var(--success-color); border: 1px solid rgba(16, 185, 129, 0.3); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem; display: inline-flex; align-items: center; gap: 0.25rem;">📌 Quoted</span>`
+                        : '';
+
                     tr.innerHTML = `
-                        <td style="padding: 0.75rem; word-break: break-all; font-size: 0.9rem;">📄 ${escapeHtml(art.path)}</td>
+                        <td style="padding: 0.75rem; text-align: center;">
+                            <input type="checkbox" class="artifact-row-cb" data-path="${encodedPath}" ${isChecked ? 'checked' : ''} onchange="toggleArtifactSelection(decodeURIComponent(this.getAttribute('data-path')), this.checked)" style="cursor: pointer; transform: scale(1.15);">
+                        </td>
+                        <td style="padding: 0.75rem; word-break: break-all; font-size: 0.9rem;">
+                            📄 ${escapeHtml(art.path)} ${quotedMarker}
+                        </td>
                         <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--accent-color);">${escapeHtml(art.sha256.substring(0, 16))}...</td>
                         <td style="padding: 0.75rem;">
                             <button class="btn btn-secondary quote-btn" data-original-path="${encodedPath}" onclick="quoteSelectedArtifact(decodeURIComponent(this.getAttribute('data-original-path')), this)" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Quote</button>
@@ -524,9 +767,8 @@
 
                 const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
                 pageInfo.innerText = `Page ${data.page} of ${totalPages} (${data.total} total)`;
-
-                prevBtn.disabled = currentPage === 1;
-                nextBtn.disabled = currentPage >= totalPages;
+                renderPagination(data.page, totalPages);
+                updateSelectionUI();
             });
     }
 
@@ -587,7 +829,7 @@
             });
             persistQuotedExhibits();
             renderReport();
-            switchTab('report');
+            updateQuotedMarkers();
             setQuoteStatus(
                 `Quote completed: ${data.exhibit_name} was copied to ${data.copied_path}. Report manifest updated at ${data.manifest_path}.`,
                 'success'
@@ -666,6 +908,136 @@
             });
     }
 
+    function formatBytes(bytes) {
+        if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 bytes';
+        if (bytes === 0) return '0 bytes';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(Math.abs(bytes)) / Math.log(k));
+        const val = (bytes / Math.pow(k, i)).toFixed(2);
+        return `${val} ${sizes[i]} (${bytes.toLocaleString()} bytes)`;
+    }
+
+    function openVerificationDetailModal(detail) {
+        const modal = document.getElementById('verification-detail-modal');
+        const badges = document.getElementById('ver-modal-badges');
+        const body = document.getElementById('ver-modal-body');
+
+        const statusColor = detail.status === 'missing' ? '#ef4444' : detail.status === 'modified' ? '#f59e0b' : '#38bdf8';
+        let badgesHtml = `<span style="background: ${statusColor}; color: #000; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 700; font-size: 0.75rem; text-transform: uppercase;">${escapeHtml(detail.status)}</span>`;
+
+        if (detail.is_renamed) {
+            badgesHtml += `<span style="background: rgba(168, 85, 247, 0.25); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 600; font-size: 0.75rem;">🏷️ Renamed</span>`;
+        }
+        if (detail.is_location_changed) {
+            badgesHtml += `<span style="background: rgba(59, 130, 246, 0.25); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 600; font-size: 0.75rem;">📍 Location changed</span>`;
+        }
+
+        badges.innerHTML = badgesHtml;
+
+        const expSize = detail.expected_size_bytes || 0;
+        const actSize = detail.actual_size_bytes || 0;
+        const diff = actSize - expSize;
+
+        let sizeComparisonHtml = '';
+        if (detail.status === 'missing') {
+            sizeComparisonHtml = `
+                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 0.85rem;">
+                    <div style="font-weight: 600; color: #fca5a5; margin-bottom: 0.3rem;">Size comparison (before vs after)</div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">
+                        Before: <strong style="color: white;">${formatBytes(expSize)}</strong> | After: <strong style="color: #ef4444;">0 bytes (file missing)</strong>
+                    </div>
+                </div>
+            `;
+        } else if (detail.status === 'extra') {
+            sizeComparisonHtml = `
+                <div style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 0.85rem;">
+                    <div style="font-weight: 600; color: #7dd3fc; margin-bottom: 0.3rem;">Size comparison (before vs after)</div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">
+                        Before: <strong style="color: white;">0 bytes (not in manifest)</strong> | After: <strong style="color: #38bdf8;">${formatBytes(actSize)}</strong>
+                    </div>
+                </div>
+            `;
+        } else {
+            let diffLabel = '';
+            let diffColor = '';
+            if (diff > 0) {
+                diffLabel = `+${formatBytes(diff)} — content added`;
+                diffColor = '#f59e0b';
+            } else if (diff < 0) {
+                diffLabel = `-${formatBytes(Math.abs(diff))} — content removed`;
+                diffColor = '#ef4444';
+            } else {
+                diffLabel = '0 bytes — size unchanged';
+                diffColor = 'var(--success-color)';
+            }
+
+            sizeComparisonHtml = `
+                <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 0.85rem;">
+                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.4rem;">Size comparison (before vs after)</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.9rem; margin-bottom: 0.4rem;">
+                        <div>Before (manifest): <strong style="color: white;">${formatBytes(expSize)}</strong></div>
+                        <div>After (verification): <strong style="color: white;">${formatBytes(actSize)}</strong></div>
+                    </div>
+                    <div style="font-size: 0.9rem; padding-top: 0.4rem; border-top: 1px dashed rgba(255,255,255,0.1); color: ${diffColor}; font-weight: 600;">
+                        Difference: ${diffLabel}
+                    </div>
+                </div>
+            `;
+        }
+
+        const expectedPath = detail.expected_path || detail.path || '-';
+        const actualPath = detail.actual_path || detail.path || '-';
+        const expectedName = detail.expected_name || (expectedPath !== '-' ? expectedPath.split(/[/\\]/).pop() : '-');
+        const actualName = detail.actual_name || (actualPath !== '-' ? actualPath.split(/[/\\]/).pop() : '-');
+
+        const pathsHtml = `
+            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 0.85rem; display: flex; flex-direction: column; gap: 0.6rem;">
+                <div style="font-weight: 600; color: var(--text-primary);">Path & file name details</div>
+                <div style="font-size: 0.88rem;">
+                    <span style="color: var(--text-secondary); display: inline-block; width: 130px;">Expected path:</span>
+                    <code style="color: var(--accent-color); word-break: break-all;">${escapeHtml(expectedPath)}</code>
+                </div>
+                <div style="font-size: 0.88rem;">
+                    <span style="color: var(--text-secondary); display: inline-block; width: 130px;">Actual path:</span>
+                    <code style="color: var(--accent-color); word-break: break-all;">${escapeHtml(actualPath)}</code>
+                </div>
+                ${detail.is_renamed ? `
+                <div style="font-size: 0.88rem; padding-top: 0.4rem; border-top: 1px dashed rgba(255,255,255,0.1);">
+                    <span style="color: #c084fc; font-weight: 600;">Renaming detail:</span>
+                    File was renamed from <code style="color: #e9d5ff;">${escapeHtml(expectedName)}</code> to <code style="color: #e9d5ff;">${escapeHtml(actualName)}</code>
+                </div>` : ''}
+                ${detail.is_location_changed ? `
+                <div style="font-size: 0.88rem; padding-top: 0.4rem; border-top: 1px dashed rgba(255,255,255,0.1);">
+                    <span style="color: #60a5fa; font-weight: 600;">Location detail:</span>
+                    File location moved from <code style="color: #bfdbfe;">${escapeHtml(expectedPath)}</code> to <code style="color: #bfdbfe;">${escapeHtml(actualPath)}</code>
+                </div>` : ''}
+            </div>
+        `;
+
+        const hashesHtml = `
+            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 0.85rem; display: flex; flex-direction: column; gap: 0.6rem;">
+                <div style="font-weight: 600; color: var(--text-primary);">SHA256 hash comparison</div>
+                <div style="font-size: 0.85rem;">
+                    <div style="color: var(--text-secondary); margin-bottom: 0.2rem;">Expected SHA256 (manifest):</div>
+                    <code style="word-break: break-all; color: var(--accent-color);">${escapeHtml(detail.expected_sha256 || 'N/A')}</code>
+                </div>
+                <div style="font-size: 0.85rem;">
+                    <div style="color: var(--text-secondary); margin-bottom: 0.2rem;">Actual SHA256 (disk verification):</div>
+                    <code style="word-break: break-all; color: ${detail.expected_sha256 && detail.actual_sha256 && detail.expected_sha256 === detail.actual_sha256 ? 'var(--success-color)' : '#ef4444'};">${escapeHtml(detail.actual_sha256 || 'N/A')}</code>
+                </div>
+            </div>
+        `;
+
+        body.innerHTML = sizeComparisonHtml + pathsHtml + hashesHtml;
+        modal.style.display = 'block';
+    }
+
+    function closeVerificationDetailModal() {
+        document.getElementById('verification-detail-modal').style.display = 'none';
+    }
+    window.closeVerificationDetailModal = closeVerificationDetailModal;
+
     function renderVerificationResults(data) {
         verificationEmpty.style.display = 'none';
         verificationPanel.style.display = 'block';
@@ -684,6 +1056,9 @@
             const statusColor = detail.status === 'missing' ? '#ef4444' : detail.status === 'modified' ? '#f59e0b' : '#38bdf8';
             const tr = document.createElement('tr');
             tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+            tr.style.cursor = "pointer";
+            tr.title = "Click line for detailed information";
+            tr.onclick = () => openVerificationDetailModal(detail);
             tr.innerHTML = `
                 <td style="padding: 0.75rem; font-weight: 700; color: ${statusColor}; text-transform: uppercase;">${escapeHtml(detail.status)}</td>
                 <td style="padding: 0.75rem; word-break: break-all;">${escapeHtml(detail.path)}</td>
@@ -721,10 +1096,37 @@
         });
     }
 
-    window.removeQuote = function(index) {
-        quotedExhibits.splice(index, 1);
-        persistQuotedExhibits();
-        renderReport();
+    window.removeQuote = async function(index) {
+        const exhibit = quotedExhibits[index];
+        if (!exhibit) return;
+
+        try {
+            const response = await fetch('/api/quote/delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    export_directory: exportDirectory,
+                    original_path: exhibit.original_path,
+                    exhibit_name: exhibit.exhibit_name,
+                    copied_path: exhibit.copied_path
+                })
+            });
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data.error || 'Failed to remove exhibit from report manifest');
+            }
+
+            quotedExhibits.splice(index, 1);
+            persistQuotedExhibits();
+            renderReport();
+            updateQuotedMarkers();
+            setQuoteStatus(`Exhibit ${exhibit.exhibit_name || exhibit.original_path} was removed from report manifest and deleted from disk.`, 'success');
+        } catch (err) {
+            console.error('Failed to remove exhibit:', err);
+            alert(`Failed to remove exhibit: ${err.message}`);
+        }
     }
 
     // Initial load

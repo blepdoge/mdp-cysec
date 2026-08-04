@@ -93,6 +93,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/artifacts", s.handleArtifacts)
 	s.mux.HandleFunc("/api/import", s.handleImport)
 	s.mux.HandleFunc("/api/quote", s.handleQuote)
+	s.mux.HandleFunc("/api/quote/bulk", s.handleBulkQuote)
+	s.mux.HandleFunc("/api/quote/delete", s.handleQuoteDelete)
 	s.mux.HandleFunc("/api/verify", s.handleVerify)
 	s.mux.HandleFunc("/api/export/manifest", s.handleExportManifest)
 	s.mux.HandleFunc("/api/export/report.json", s.handleExportReportJSON)
@@ -573,6 +575,93 @@ func (s *Server) handleQuote(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type BulkQuoteRequest struct {
+	OriginalPaths   []string `json:"original_paths"`
+	ExportDirectory string   `json:"export_directory"`
+}
+
+func (s *Server) handleBulkQuote(w http.ResponseWriter, r *http.Request) {
+	writeJSONError := func(status int, message string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		json.NewEncoder(w).Encode(map[string]string{"error": message})
+	}
+
+	if r.Method != http.MethodPost {
+		writeJSONError(http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	if s.currentManifest == nil {
+		writeJSONError(http.StatusBadRequest, "No manifest loaded")
+		return
+	}
+
+	var req BulkQuoteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if len(req.OriginalPaths) == 0 || req.ExportDirectory == "" {
+		writeJSONError(http.StatusBadRequest, "original_paths and export_directory are required")
+		return
+	}
+
+	s.stateMu.Lock()
+	sourceRoot := s.evidenceDir
+	if sourceRoot == "" {
+		sourceRoot = s.rootDir
+	}
+	s.stateMu.Unlock()
+
+	results, err := exporting.QuoteArtifactsBulk(sourceRoot, req.OriginalPaths, req.ExportDirectory, s.currentManifest)
+	if err != nil {
+		writeJSONError(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":           "success",
+		"total_quoted":     len(results),
+		"results":          results,
+		"export_directory": req.ExportDirectory,
+	})
+}
+
+type QuoteDeleteRequest struct {
+	ExportDirectory string `json:"export_directory"`
+	OriginalPath    string `json:"original_path"`
+	ExhibitName     string `json:"exhibit_name"`
+	CopiedPath      string `json:"copied_path"`
+}
+
+func (s *Server) handleQuoteDelete(w http.ResponseWriter, r *http.Request) {
+	writeJSONError := func(status int, message string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		json.NewEncoder(w).Encode(map[string]string{"error": message})
+	}
+
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		writeJSONError(http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req QuoteDeleteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := exporting.DeleteQuotedArtifact(req.ExportDirectory, req.OriginalPath, req.ExhibitName, req.CopiedPath); err != nil {
+		writeJSONError(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
 type VerificationResult struct {
 	Verified      int                  `json:"verified"`
 	Missing       int                  `json:"missing"`
@@ -586,10 +675,18 @@ type VerificationResult struct {
 }
 
 type VerificationDetail struct {
-	Status         string `json:"status"`
-	Path           string `json:"path"`
-	ExpectedSHA256 string `json:"expected_sha256,omitempty"`
-	ActualSHA256   string `json:"actual_sha256,omitempty"`
+	Status            string `json:"status"`
+	Path              string `json:"path"`
+	ExpectedPath      string `json:"expected_path,omitempty"`
+	ActualPath        string `json:"actual_path,omitempty"`
+	ExpectedName      string `json:"expected_name,omitempty"`
+	ActualName        string `json:"actual_name,omitempty"`
+	ExpectedSHA256    string `json:"expected_sha256,omitempty"`
+	ActualSHA256      string `json:"actual_sha256,omitempty"`
+	ExpectedSizeBytes int64  `json:"expected_size_bytes"`
+	ActualSizeBytes   int64  `json:"actual_size_bytes"`
+	IsRenamed         bool   `json:"is_renamed"`
+	IsLocationChanged bool   `json:"is_location_changed"`
 }
 
 type VerifyRequest struct {
@@ -665,10 +762,18 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 			if current.SHA256 != expected.SHA256 {
 				result.Modified++
 				result.Details = append(result.Details, VerificationDetail{
-					Status:         "modified",
-					Path:           expected.Path,
-					ExpectedSHA256: expected.SHA256,
-					ActualSHA256:   current.SHA256,
+					Status:            "modified",
+					Path:              expected.Path,
+					ExpectedPath:      expected.Path,
+					ActualPath:        current.Path,
+					ExpectedName:      expected.Name,
+					ActualName:        current.Name,
+					ExpectedSHA256:    expected.SHA256,
+					ActualSHA256:      current.SHA256,
+					ExpectedSizeBytes: expected.SizeBytes,
+					ActualSizeBytes:   current.SizeBytes,
+					IsRenamed:         expected.Name != current.Name,
+					IsLocationChanged: expected.Path != current.Path,
 				})
 			} else {
 				result.Verified++
@@ -691,19 +796,34 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 			currentByHash[expected.SHA256] = candidates[1:]
 			delete(unmatchedCurrent, current.Path)
 
+			isRenamed := expected.Name != current.Name
+			isLocChanged := expected.Path != current.Path
+
 			result.Modified++
 			result.Details = append(result.Details, VerificationDetail{
-				Status:         "modified",
-				Path:           fmt.Sprintf("%s -> %s", expected.Path, current.Path),
-				ExpectedSHA256: expected.SHA256,
-				ActualSHA256:   current.SHA256,
+				Status:            "modified",
+				Path:              fmt.Sprintf("%s -> %s", expected.Path, current.Path),
+				ExpectedPath:      expected.Path,
+				ActualPath:        current.Path,
+				ExpectedName:      expected.Name,
+				ActualName:        current.Name,
+				ExpectedSHA256:    expected.SHA256,
+				ActualSHA256:      current.SHA256,
+				ExpectedSizeBytes: expected.SizeBytes,
+				ActualSizeBytes:   current.SizeBytes,
+				IsRenamed:         isRenamed,
+				IsLocationChanged: isLocChanged,
 			})
 		} else {
 			result.Missing++
 			result.Details = append(result.Details, VerificationDetail{
-				Status:         "missing",
-				Path:           expected.Path,
-				ExpectedSHA256: expected.SHA256,
+				Status:            "missing",
+				Path:              expected.Path,
+				ExpectedPath:      expected.Path,
+				ExpectedName:      expected.Name,
+				ExpectedSHA256:    expected.SHA256,
+				ExpectedSizeBytes: expected.SizeBytes,
+				ActualSizeBytes:   0,
 			})
 		}
 	}
@@ -711,9 +831,13 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 	for _, current := range unmatchedCurrent {
 		result.Extra++
 		result.Details = append(result.Details, VerificationDetail{
-			Status:       "extra",
-			Path:         current.Path,
-			ActualSHA256: current.SHA256,
+			Status:            "extra",
+			Path:              current.Path,
+			ActualPath:        current.Path,
+			ActualName:        current.Name,
+			ActualSHA256:      current.SHA256,
+			ExpectedSizeBytes: 0,
+			ActualSizeBytes:   current.SizeBytes,
 		})
 	}
 
