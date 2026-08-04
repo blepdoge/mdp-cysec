@@ -918,6 +918,204 @@
         return `${val} ${sizes[i]} (${bytes.toLocaleString()} bytes)`;
     }
 
+    function pairTextOperations(ops) {
+        const rows = [];
+        for (let i = 0; i < ops.length; i++) {
+            const op = ops[i];
+            const next = ops[i + 1];
+
+            if (op.type === 'remove' && next && next.type === 'add') {
+                rows.push({
+                    kind: 'modify',
+                    beforeLine: op.before_line,
+                    afterLine: next.after_line,
+                    before: op.before || '',
+                    after: next.after || '',
+                });
+                i++;
+                continue;
+            }
+
+            if (op.type === 'remove') {
+                rows.push({
+                    kind: 'remove',
+                    beforeLine: op.before_line,
+                    afterLine: '',
+                    before: op.before || '',
+                    after: '',
+                });
+                continue;
+            }
+
+            if (op.type === 'add') {
+                rows.push({
+                    kind: 'add',
+                    beforeLine: '',
+                    afterLine: op.after_line,
+                    before: '',
+                    after: op.after || '',
+                });
+            }
+        }
+        return rows;
+    }
+
+    function renderChangeAnalysis(analysis) {
+        if (!analysis) {
+            return '';
+        }
+
+        const parts = [];
+        parts.push(`
+            <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px; padding: 0.9rem;">
+                <div style="font-weight: 700; color: #bfdbfe; margin-bottom: 0.35rem;">Exact change analysis</div>
+                <div style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5;">${escapeHtml(analysis.summary || 'No summary available.')}</div>
+            </div>
+        `);
+
+        if (analysis.kind === 'text' && analysis.text) {
+            const ops = analysis.text.operations || [];
+            const pairedRows = pairTextOperations(ops);
+            const addedCount = pairedRows.filter(row => row.kind === 'add').length;
+            const removedCount = pairedRows.filter(row => row.kind === 'remove').length;
+            const modifiedCount = pairedRows.filter(row => row.kind === 'modify').length;
+
+            const sideBySideRows = pairedRows.slice(0, 40).map(row => {
+                const beforeColor = row.kind === 'remove' ? '#ef4444' : row.kind === 'modify' ? '#f59e0b' : 'rgba(255,255,255,0.22)';
+                const afterColor = row.kind === 'add' ? '#22c55e' : row.kind === 'modify' ? '#22c55e' : 'rgba(255,255,255,0.22)';
+                const beforeBg = row.kind === 'remove' ? 'rgba(239, 68, 68, 0.08)' : row.kind === 'modify' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(255,255,255,0.03)';
+                const afterBg = row.kind === 'add' ? 'rgba(34, 197, 94, 0.08)' : row.kind === 'modify' ? 'rgba(34, 197, 94, 0.08)' : 'rgba(255,255,255,0.03)';
+                const beforeLine = row.beforeLine || '-';
+                const afterLine = row.afterLine || '-';
+                const beforeText = row.before ? escapeHtml(row.before) : '<span style="color: rgba(255,255,255,0.35); font-style: italic;">(removed)</span>';
+                const afterText = row.after ? escapeHtml(row.after) : '<span style="color: rgba(255,255,255,0.35); font-style: italic;">(added)</span>';
+
+                return `
+                    <tr style="vertical-align: top;">
+                        <td style="width: 50%; padding: 0.55rem; background: ${beforeBg}; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                            <div style="display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.35rem; color: var(--text-secondary); font-size: 0.8rem;">
+                                <span style="background: ${beforeColor}; color: #000; padding: 0.12rem 0.45rem; border-radius: 4px; font-weight: 700; text-transform: uppercase;">Before</span>
+                                <span>Line ${beforeLine}</span>
+                            </div>
+                            <code style="display: block; white-space: pre-wrap; word-break: break-word; color: ${row.kind === 'remove' ? '#fecaca' : '#e5e7eb'};">${beforeText}</code>
+                        </td>
+                        <td style="width: 50%; padding: 0.55rem; background: ${afterBg}; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                            <div style="display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.35rem; color: var(--text-secondary); font-size: 0.8rem;">
+                                <span style="background: ${afterColor}; color: #000; padding: 0.12rem 0.45rem; border-radius: 4px; font-weight: 700; text-transform: uppercase;">After</span>
+                                <span>Line ${afterLine}</span>
+                            </div>
+                            <code style="display: block; white-space: pre-wrap; word-break: break-word; color: ${row.kind === 'add' ? '#bbf7d0' : '#e5e7eb'};">${afterText}</code>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            const opRows = ops.slice(0, 40).map(op => {
+                const color = op.type === 'remove' ? '#fca5a5' : '#86efac';
+                const label = op.type === 'remove' ? 'Removed' : 'Added';
+                const lineNo = op.type === 'remove' ? op.before_line : op.after_line;
+                const content = op.type === 'remove' ? op.before : op.after;
+                return `
+                    <tr>
+                        <td style="padding: 0.45rem 0.55rem; color: ${color}; font-weight: 700; text-transform: uppercase;">${label}</td>
+                        <td style="padding: 0.45rem 0.55rem; color: var(--text-secondary);">${lineNo || '-'}</td>
+                        <td style="padding: 0.45rem 0.55rem; font-family: monospace; word-break: break-word; white-space: pre-wrap;">${escapeHtml(content || '')}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            parts.push(`
+                <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 0.85rem;">
+                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">Text diff</div>
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap; color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.65rem;">
+                        <span>Before: <strong style="color: white;">${analysis.text.line_count_before || 0}</strong> lines</span>
+                        <span>After: <strong style="color: white;">${analysis.text.line_count_after || 0}</strong> lines</span>
+                        <span>Operations: <strong style="color: white;">${ops.length}</strong></span>
+                        <span>Added: <strong style="color: white;">${addedCount}</strong></span>
+                        <span>Removed: <strong style="color: white;">${removedCount}</strong></span>
+                        <span>Modified: <strong style="color: white;">${modifiedCount}</strong></span>
+                    </div>
+                    <div style="overflow-x: auto; max-height: 320px; overflow-y: auto; border-top: 1px solid rgba(255,255,255,0.08); margin-bottom: 0.9rem;">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+                                    <th style="padding: 0.5rem; color: var(--text-secondary); width: 50%;">Before</th>
+                                    <th style="padding: 0.5rem; color: var(--text-secondary); width: 50%;">After</th>
+                                </tr>
+                            </thead>
+                            <tbody>${sideBySideRows || `<tr><td colspan="2" style="padding: 0.75rem; color: var(--success-color);">No textual differences found.</td></tr>`}</tbody>
+                        </table>
+                    </div>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.4rem;">Operation log</div>
+                    <div style="overflow-x: auto; max-height: 220px; overflow-y: auto; border-top: 1px solid rgba(255,255,255,0.08);">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+                                    <th style="padding: 0.5rem; color: var(--text-secondary);">Type</th>
+                                    <th style="padding: 0.5rem; color: var(--text-secondary);">Line</th>
+                                    <th style="padding: 0.5rem; color: var(--text-secondary);">Content</th>
+                                </tr>
+                            </thead>
+                            <tbody>${opRows || `<tr><td colspan="3" style="padding: 0.75rem; color: var(--success-color);">No textual differences found.</td></tr>`}</tbody>
+                        </table>
+                    </div>
+                    ${ops.length > 40 ? `<div style="margin-top: 0.6rem; color: var(--text-secondary); font-size: 0.85rem;">Showing first 40 line operations.</div>` : ''}
+                </div>
+            `);
+        } else if (analysis.kind === 'image' && analysis.image) {
+            const img = analysis.image;
+            const notes = (img.notes || []).map(note => `<li>${escapeHtml(note)}</li>`).join('');
+            parts.push(`
+                <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 0.85rem;">
+                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">Image diff</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.65rem; color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.75rem;">
+                        <div>Before: <strong style="color: white;">${img.before_width || 0} x ${img.before_height || 0}</strong></div>
+                        <div>After: <strong style="color: white;">${img.after_width || 0} x ${img.after_height || 0}</strong></div>
+                        <div>Changed pixels: <strong style="color: white;">${img.overlap_changed_pixels || 0}</strong> / ${img.overlap_total_pixels || 0}</div>
+                        <div>Changed percent: <strong style="color: white;">${(img.changed_percent || 0).toFixed(2)}%</strong></div>
+                    </div>
+                    ${img.bounds ? `
+                    <div style="margin-bottom: 0.75rem; color: var(--text-secondary); font-size: 0.9rem;">
+                        Changed region: <strong style="color: white;">x=${img.bounds.min_x}..${img.bounds.max_x}, y=${img.bounds.min_y}..${img.bounds.max_y}</strong>
+                    </div>` : ''}
+                    <div style="color: ${img.suspected_crop ? '#f59e0b' : 'var(--success-color)'}; font-weight: 600; margin-bottom: 0.65rem;">
+                        ${img.suspected_crop ? 'Likely crop or canvas resize.' : 'No strong crop signal detected.'}
+                    </div>
+                    ${notes ? `
+                    <div>
+                        <div style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 0.35rem;">Notes</div>
+                        <ul style="margin: 0; padding-left: 1.2rem; color: var(--text-primary);">${notes}</ul>
+                    </div>` : ''}
+                </div>
+            `);
+        } else if (analysis.kind === 'binary' && analysis.binary) {
+            const bin = analysis.binary;
+            parts.push(`
+                <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 0.85rem;">
+                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">Binary diff</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.65rem; color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.75rem;">
+                        <div>Before size: <strong style="color: white;">${formatBytes(bin.size_before_bytes || 0)}</strong></div>
+                        <div>After size: <strong style="color: white;">${formatBytes(bin.size_after_bytes || 0)}</strong></div>
+                        <div>First diff offset: <strong style="color: white;">${bin.first_different_offset || 0}</strong></div>
+                        <div>Different bytes: <strong style="color: white;">${bin.differing_byte_count || 0}</strong></div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 0.35rem;">Before preview</div>
+                            <code style="display: block; word-break: break-all; white-space: pre-wrap; color: #bfdbfe;">${escapeHtml(bin.before_preview || '')}</code>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 0.35rem;">After preview</div>
+                            <code style="display: block; word-break: break-all; white-space: pre-wrap; color: #fecaca;">${escapeHtml(bin.after_preview || '')}</code>
+                        </div>
+                    </div>
+                </div>
+            `);
+        }
+
+        return parts.join('');
+    }
+
     function openVerificationDetailModal(detail) {
         const modal = document.getElementById('verification-detail-modal');
         const badges = document.getElementById('ver-modal-badges');
@@ -1029,7 +1227,14 @@
             </div>
         `;
 
-        body.innerHTML = sizeComparisonHtml + pathsHtml + hashesHtml;
+        const summaryHtml = detail.change_summary ? `
+            <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 8px; padding: 0.85rem;">
+                <div style="font-weight: 600; color: #e9d5ff; margin-bottom: 0.35rem;">Change summary</div>
+                <div style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5;">${escapeHtml(detail.change_summary)}</div>
+            </div>
+        ` : '';
+
+        body.innerHTML = sizeComparisonHtml + pathsHtml + hashesHtml + summaryHtml + renderChangeAnalysis(detail.change_analysis);
         modal.style.display = 'block';
     }
 

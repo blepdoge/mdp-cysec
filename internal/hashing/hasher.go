@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"hash"
 	"io"
 	"io/fs"
@@ -20,12 +21,17 @@ import (
 )
 
 type Hasher struct {
-	RootDir string
+	RootDir     string
+	SnapshotDir string
 }
 
 // NewHasher creates and returns a new Hasher instance with the given RootDir.
-func NewHasher(rootDir string) *Hasher {
-	return &Hasher{RootDir: rootDir}
+func NewHasher(rootDir string, snapshotDir ...string) *Hasher {
+	h := &Hasher{RootDir: rootDir}
+	if len(snapshotDir) > 0 {
+		h.SnapshotDir = snapshotDir[0]
+	}
+	return h
 }
 
 type ProgressUpdate struct {
@@ -40,25 +46,31 @@ func (h *Hasher) GenerateManifest(progressChan chan<- ProgressUpdate) (*models.M
 		Artifacts: make([]models.Artifact, 0),
 	}
 
+	if h.SnapshotDir != "" {
+		if err := os.MkdirAll(h.SnapshotDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create snapshot directory: %w", err)
+		}
+	}
+
 	// Step 1: Gather all files
 	type fileEntry struct {
-    	path string
-    	info fs.FileInfo
+		path string
+		info fs.FileInfo
 	}
 
 	var files []fileEntry
 
 	err := filepath.WalkDir(h.RootDir, func(path string, d fs.DirEntry, err error) error {
-	    if err != nil || d == nil {
-	        return nil
-	    }
-	    if d.Type().IsRegular() {
-	        info, err := d.Info()
-	        if err == nil {
-	            files = append(files, fileEntry{path, info})
-	        }
-	    }
-	    return nil
+		if err != nil || d == nil {
+			return nil
+		}
+		if d.Type().IsRegular() {
+			info, err := d.Info()
+			if err == nil {
+				files = append(files, fileEntry{path, info})
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -75,6 +87,7 @@ func (h *Hasher) GenerateManifest(progressChan chan<- ProgressUpdate) (*models.M
 			ManifestVersion:   "1.0",
 			TotalArtifacts:    0,
 			EvidenceDirectory: h.RootDir,
+			SnapshotDirectory: h.SnapshotDir,
 			CreationTimestamp: &now,
 		}
 		if progressChan != nil {
@@ -111,15 +124,15 @@ func (h *Hasher) GenerateManifest(progressChan chan<- ProgressUpdate) (*models.M
 
 	// Launch workers
 	for w := 1; w <= numWorkers; w++ {
-    wg.Add(1)
-    go func() {
-        defer wg.Done()
-        for entry := range jobs {
-            if art, err := hashFile(h.RootDir, entry.path, entry.info); err == nil {
-                resultsChan <- art
-            }
-        }
-    }()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for entry := range jobs {
+				if art, err := hashFile(h.RootDir, h.SnapshotDir, entry.path, entry.info); err == nil {
+					resultsChan <- art
+				}
+			}
+		}()
 	}
 
 	// Feed jobs
@@ -162,6 +175,7 @@ func (h *Hasher) GenerateManifest(progressChan chan<- ProgressUpdate) (*models.M
 		TotalArtifacts:    len(artifacts),
 		TotalBytes:        totalBytes,
 		EvidenceDirectory: h.RootDir,
+		SnapshotDirectory: h.SnapshotDir,
 		CreationTimestamp: &now,
 	}
 
@@ -193,8 +207,8 @@ var bufPool = sync.Pool{
 }
 
 // hashFile opens a file, computes its SHA256, SHA1, and MD5 hashes in a single pass,
-// and returns a models.Artifact struct with the calculated hashes and relative path.
-func hashFile(rootDir, filePath string, info os.FileInfo) (models.Artifact, error) {
+// and optionally stores a baseline snapshot that can be used later for diffing.
+func hashFile(rootDir, snapshotDir, filePath string, info os.FileInfo) (models.Artifact, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return models.Artifact{}, err
@@ -212,23 +226,64 @@ func hashFile(rootDir, filePath string, info os.FileInfo) (models.Artifact, erro
 	buf := bufPool.Get().(*[]byte)
 	defer bufPool.Put(buf)
 
-	writer := io.MultiWriter(hs.md5, hs.sha1, hs.sha256)
-	if _, err := io.CopyBuffer(writer, f, *buf); err != nil {
-		return models.Artifact{}, err
-	}
-
 	relPath, err := filepath.Rel(rootDir, filePath)
 	if err != nil {
 		return models.Artifact{}, err
 	}
 	relPath = filepath.ToSlash(relPath)
 
-	return models.Artifact{
+	var snapshotTemp *os.File
+	if snapshotDir != "" {
+		snapshotTemp, err = os.CreateTemp(snapshotDir, ".baseline-*")
+		if err != nil {
+			return models.Artifact{}, err
+		}
+		defer func() {
+			if snapshotTemp != nil {
+				snapshotTemp.Close()
+			}
+		}()
+	}
+
+	writer := io.MultiWriter(hs.md5, hs.sha1, hs.sha256)
+	if snapshotTemp != nil {
+		writer = io.MultiWriter(hs.md5, hs.sha1, hs.sha256, snapshotTemp)
+	}
+	if _, err := io.CopyBuffer(writer, f, *buf); err != nil {
+		if snapshotTemp != nil {
+			_ = os.Remove(snapshotTemp.Name())
+		}
+		return models.Artifact{}, err
+	}
+
+	artifactSHA256 := hex.EncodeToString(hs.sha256.Sum(nil))
+	artifactSHA1 := hex.EncodeToString(hs.sha1.Sum(nil))
+	artifactMD5 := hex.EncodeToString(hs.md5.Sum(nil))
+
+	artifact := models.Artifact{
 		Name:      info.Name(),
 		Path:      "/" + relPath,
 		SizeBytes: info.Size(),
-		SHA256:    hex.EncodeToString(hs.sha256.Sum(nil)),
-		SHA1:      hex.EncodeToString(hs.sha1.Sum(nil)),
-		MD5:       hex.EncodeToString(hs.md5.Sum(nil)),
-	}, nil
+		SHA256:    artifactSHA256,
+		SHA1:      artifactSHA1,
+		MD5:       artifactMD5,
+	}
+
+	if snapshotTemp != nil {
+		if err := snapshotTemp.Close(); err != nil {
+			_ = os.Remove(snapshotTemp.Name())
+			return models.Artifact{}, err
+		}
+
+		pathHash := sha256.Sum256([]byte(relPath))
+		snapshotName := fmt.Sprintf("%s_%x.snapshot", artifactSHA256, pathHash[:8])
+		finalPath := filepath.Join(snapshotDir, snapshotName)
+		if err := os.Rename(snapshotTemp.Name(), finalPath); err != nil {
+			_ = os.Remove(snapshotTemp.Name())
+			return models.Artifact{}, err
+		}
+		artifact.BaselineSnapshotPath = snapshotName
+	}
+
+	return artifact, nil
 }

@@ -12,6 +12,7 @@ type CaseMetadata struct {
 	CaseName          string     `json:"case_name,omitempty"`
 	Analyst           string     `json:"analyst,omitempty"`
 	EvidenceDirectory string     `json:"evidence_directory,omitempty"`
+	SnapshotDirectory string     `json:"snapshot_directory,omitempty"`
 	CaseRootHash      string     `json:"case_root_hash"`
 	TotalArtifacts    int        `json:"total_artifacts"`
 	TotalBytes        int64      `json:"total_bytes"`
@@ -20,12 +21,13 @@ type CaseMetadata struct {
 }
 
 type Artifact struct {
-	Name         string     `json:"name"`
-	Path         string     `json:"path"`
-	SizeBytes    int64      `json:"size_bytes"`
-	SHA256       string     `json:"sha256"`
-	SHA1         string     `json:"sha1"`
-	MD5          string     `json:"md5"`
+	Name                 string `json:"name"`
+	Path                 string `json:"path"`
+	SizeBytes            int64  `json:"size_bytes"`
+	SHA256               string `json:"sha256"`
+	SHA1                 string `json:"sha1"`
+	MD5                  string `json:"md5"`
+	BaselineSnapshotPath string `json:"baseline_snapshot_path,omitempty"`
 }
 
 type MasterManifest struct {

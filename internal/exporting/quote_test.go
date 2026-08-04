@@ -21,7 +21,7 @@ func TestQuoteAndDeleteArtifact(t *testing.T) {
 			{
 				Name:      "sample.txt",
 				Path:      sourceFile,
-				SHA256:    "69800ff8e515d9a941584c017d2a58b88d8b9d5c48b0662d5d8525b6a713ef33",
+				SHA256:    "019b2f52bca72502e01475c0c13d352b3dbf8139a4b9f378b37443ee218d7e5b",
 				SizeBytes: int64(len(content)),
 			},
 		},
@@ -70,13 +70,13 @@ func TestQuoteArtifactsBulk(t *testing.T) {
 			{
 				Name:      "file1.txt",
 				Path:      file1,
-				SHA256:    "08e7a08b5be4c70d49f059a4b86c382b6b060d4b9681121d58cfb96b349d592b", // sha256 of "hello 1"
+				SHA256:    "50db240d003e4fa4832a8e5f5b38d51f260a68f6337c0c16f960c4ccfb1ac028", // sha256 of "hello 1"
 				SizeBytes: int64(len(content1)),
 			},
 			{
 				Name:      "file2.txt",
 				Path:      file2,
-				SHA256:    "e6f53a48e89ebf9f59f63cf6efd1b82e21b764619d08e5e89a54483788a8eb68", // sha256 of "hello 2"
+				SHA256:    "bf949020174558630551a377686f51a7cd4519be43f3514f3bdfc205ee558e6a", // sha256 of "hello 2"
 				SizeBytes: int64(len(content2)),
 			},
 		},

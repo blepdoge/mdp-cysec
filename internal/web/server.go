@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"mdp-cysec/internal/diffx"
 	"mdp-cysec/internal/exporting"
 	"mdp-cysec/internal/hashing"
 	"mdp-cysec/internal/merkle"
@@ -29,10 +30,10 @@ type Server struct {
 	evidenceDir string
 	tsa         *rfc3161.Client
 
-	clients         map[chan string]bool
-	clientsMu       sync.Mutex
-	currentManifest *models.MasterManifest
-	currentRootDir  string
+	clients          map[chan string]bool
+	clientsMu        sync.Mutex
+	currentManifest  *models.MasterManifest
+	currentRootDir   string
 	lastVerification *VerificationResult
 
 	// Thread-safe state tracking for hashing progress
@@ -158,9 +159,14 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	s.stateMu.Unlock()
 
 	progressChan := make(chan hashing.ProgressUpdate, 100)
+	timestamp := time.Now().Format("20060102_150405")
+	snapshotDir := fmt.Sprintf("manifest_%s.snapshots", timestamp)
+	if absSnapshotDir, err := filepath.Abs(snapshotDir); err == nil {
+		snapshotDir = absSnapshotDir
+	}
 
 	go func() {
-		hasher := hashing.NewHasher(targetDir)
+		hasher := hashing.NewHasher(targetDir, snapshotDir)
 		manifest, err := hasher.GenerateManifest(progressChan)
 		if err != nil {
 			fmt.Printf("Hashing error: %v\n", err)
@@ -173,7 +179,6 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		manifest.CaseMetadata.CaseID = strings.TrimSpace(req.CaseID)
 		manifest.CaseMetadata.CaseName = strings.TrimSpace(req.CaseName)
 		manifest.CaseMetadata.Analyst = strings.TrimSpace(req.Analyst)
-		timestamp := time.Now().Format("20060102_150405")
 		filename := fmt.Sprintf("manifest_%s.json", timestamp)
 		s.sealManifest(manifest, timestamp)
 		manifest.SaveToFile(filename)
@@ -675,18 +680,20 @@ type VerificationResult struct {
 }
 
 type VerificationDetail struct {
-	Status            string `json:"status"`
-	Path              string `json:"path"`
-	ExpectedPath      string `json:"expected_path,omitempty"`
-	ActualPath        string `json:"actual_path,omitempty"`
-	ExpectedName      string `json:"expected_name,omitempty"`
-	ActualName        string `json:"actual_name,omitempty"`
-	ExpectedSHA256    string `json:"expected_sha256,omitempty"`
-	ActualSHA256      string `json:"actual_sha256,omitempty"`
-	ExpectedSizeBytes int64  `json:"expected_size_bytes"`
-	ActualSizeBytes   int64  `json:"actual_size_bytes"`
-	IsRenamed         bool   `json:"is_renamed"`
-	IsLocationChanged bool   `json:"is_location_changed"`
+	Status            string          `json:"status"`
+	Path              string          `json:"path"`
+	ExpectedPath      string          `json:"expected_path,omitempty"`
+	ActualPath        string          `json:"actual_path,omitempty"`
+	ExpectedName      string          `json:"expected_name,omitempty"`
+	ActualName        string          `json:"actual_name,omitempty"`
+	ExpectedSHA256    string          `json:"expected_sha256,omitempty"`
+	ActualSHA256      string          `json:"actual_sha256,omitempty"`
+	ExpectedSizeBytes int64           `json:"expected_size_bytes"`
+	ActualSizeBytes   int64           `json:"actual_size_bytes"`
+	IsRenamed         bool            `json:"is_renamed"`
+	IsLocationChanged bool            `json:"is_location_changed"`
+	ChangeSummary     string          `json:"change_summary,omitempty"`
+	ChangeAnalysis    *diffx.Analysis `json:"change_analysis,omitempty"`
 }
 
 type VerifyRequest struct {
@@ -760,6 +767,15 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		current, ok := unmatchedCurrent[expected.Path]
 		if ok {
 			if current.SHA256 != expected.SHA256 {
+				currentAbsPath := filepath.Join(targetDir, strings.TrimPrefix(current.Path, "/"))
+				changeSummary := "Exact change analysis unavailable."
+				var changeAnalysis *diffx.Analysis
+				if analysis, err := diffx.AnalyzeChange(expected, currentAbsPath, s.currentManifest.CaseMetadata.SnapshotDirectory); err == nil {
+					changeAnalysis = analysis
+					changeSummary = analysis.Summary
+				} else {
+					changeSummary = err.Error()
+				}
 				result.Modified++
 				result.Details = append(result.Details, VerificationDetail{
 					Status:            "modified",
@@ -774,6 +790,8 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 					ActualSizeBytes:   current.SizeBytes,
 					IsRenamed:         expected.Name != current.Name,
 					IsLocationChanged: expected.Path != current.Path,
+					ChangeSummary:     changeSummary,
+					ChangeAnalysis:    changeAnalysis,
 				})
 			} else {
 				result.Verified++
@@ -813,6 +831,7 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 				ActualSizeBytes:   current.SizeBytes,
 				IsRenamed:         isRenamed,
 				IsLocationChanged: isLocChanged,
+				ChangeSummary:     "Content hashes match; file was moved or renamed without content changes.",
 			})
 		} else {
 			result.Missing++
@@ -824,6 +843,7 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 				ExpectedSHA256:    expected.SHA256,
 				ExpectedSizeBytes: expected.SizeBytes,
 				ActualSizeBytes:   0,
+				ChangeSummary:     "File is missing from the verification directory.",
 			})
 		}
 	}
@@ -838,6 +858,7 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 			ActualSHA256:      current.SHA256,
 			ExpectedSizeBytes: 0,
 			ActualSizeBytes:   current.SizeBytes,
+			ChangeSummary:     "File exists on disk but was not present in the manifest.",
 		})
 	}
 
@@ -878,10 +899,10 @@ func (s *Server) handleExportManifest(w http.ResponseWriter, r *http.Request) {
 }
 
 type IntegrityReport struct {
-	GeneratedAt   time.Time            `json:"generated_at"`
+	GeneratedAt   time.Time              `json:"generated_at"`
 	Manifest      *models.MasterManifest `json:"manifest"`
-	Verification  *VerificationResult  `json:"verification,omitempty"`
-	LoadedRootDir string               `json:"loaded_root_dir,omitempty"`
+	Verification  *VerificationResult    `json:"verification,omitempty"`
+	LoadedRootDir string                 `json:"loaded_root_dir,omitempty"`
 }
 
 func (s *Server) buildReport() (*IntegrityReport, error) {

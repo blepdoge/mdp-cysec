@@ -71,3 +71,30 @@ func TestGenerateManifestEmptyDir(t *testing.T) {
 		t.Errorf("total artifacts = %d, want 0", manifest.CaseMetadata.TotalArtifacts)
 	}
 }
+
+func TestGenerateManifestStoresSnapshots(t *testing.T) {
+	root := t.TempDir()
+	snapshotDir := filepath.Join(t.TempDir(), "snapshots")
+	writeFile(t, root, "alpha.txt", "alpha")
+
+	manifest, err := NewHasher(root, snapshotDir).GenerateManifest(nil)
+	if err != nil {
+		t.Fatalf("GenerateManifest returned error: %v", err)
+	}
+	if len(manifest.Artifacts) != 1 {
+		t.Fatalf("artifacts = %d, want 1", len(manifest.Artifacts))
+	}
+
+	artifact := manifest.Artifacts[0]
+	if artifact.BaselineSnapshotPath == "" {
+		t.Fatal("expected baseline snapshot path to be recorded")
+	}
+
+	snapshotPath := filepath.Join(snapshotDir, artifact.BaselineSnapshotPath)
+	if _, err := os.Stat(snapshotPath); err != nil {
+		t.Fatalf("expected snapshot file at %s: %v", snapshotPath, err)
+	}
+	if manifest.CaseMetadata.SnapshotDirectory != snapshotDir {
+		t.Fatalf("snapshot directory = %q, want %q", manifest.CaseMetadata.SnapshotDirectory, snapshotDir)
+	}
+}
