@@ -701,6 +701,22 @@ type VerificationDetail struct {
 	ChangeAnalysis    *diffx.Analysis `json:"change_analysis,omitempty"`
 }
 
+func (v VerificationDetail) DisplayStatus() string {
+	if v.Status == "modified" {
+		if v.IsRenamed && v.IsLocationChanged {
+			return "renamed & moved"
+		}
+		if v.IsRenamed {
+			return "renamed"
+		}
+		if v.IsLocationChanged {
+			return "moved"
+		}
+		return "modified"
+	}
+	return v.Status
+}
+
 type VerifyRequest struct {
 	Directory string `json:"directory"`
 }
@@ -1001,7 +1017,7 @@ func renderIntegrityReportHTML(report *IntegrityReport) ([]byte, error) {
 		<tbody>
 		{{if .Verification.Details}}
 			{{range .Verification.Details}}
-			<tr><td>{{.Status}}</td><td><code>{{.Path}}</code></td><td><code>{{.ExpectedSHA256}}</code></td><td><code>{{.ActualSHA256}}</code></td></tr>
+			<tr><td>{{.DisplayStatus}}</td><td><code>{{.Path}}</code></td><td><code>{{.ExpectedSHA256}}</code></td><td><code>{{.ActualSHA256}}</code></td></tr>
 			{{end}}
 		{{else}}
 			<tr><td colspan="4" class="ok">All manifest entries match the selected folder.</td></tr>
