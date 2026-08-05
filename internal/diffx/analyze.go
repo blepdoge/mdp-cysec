@@ -10,7 +10,6 @@ import (
 	_ "image/png"
 	"os"
 	"path/filepath"
-	"strings"
 	"unicode/utf8"
 
 	"mdp-cysec/internal/models"
@@ -139,12 +138,18 @@ func looksLikeText(data []byte) bool {
 	if len(data) == 0 {
 		return true
 	}
-	if !utf8.Valid(data) {
+
+	sample := data
+	if len(sample) > 1024 {
+		sample = sample[:1024]
+	}
+
+	if !utf8.Valid(sample) {
 		return false
 	}
 
 	controls := 0
-	for _, b := range data {
+	for _, b := range sample {
 		if b == 0 {
 			return false
 		}
@@ -153,18 +158,35 @@ func looksLikeText(data []byte) bool {
 		}
 	}
 
-	return float64(controls)/float64(len(data)) < 0.02
+	return float64(controls)/float64(len(sample)) < 0.02
 }
 
 func splitLines(data []byte) []string {
-	text := strings.ReplaceAll(string(data), "\r\n", "\n")
-	text = strings.ReplaceAll(text, "\r", "\n")
-	if text == "" {
+	if len(data) == 0 {
 		return []string{}
 	}
-	lines := strings.Split(text, "\n")
-	if len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
+	var lines []string
+	start := 0
+	for i := 0; i < len(data); i++ {
+		if data[i] == '\n' {
+			end := i
+			if i > start && data[i-1] == '\r' {
+				end = i - 1
+			}
+			lines = append(lines, string(data[start:end]))
+			start = i + 1
+		} else if data[i] == '\r' {
+			if i+1 < len(data) && data[i+1] != '\n' {
+				lines = append(lines, string(data[start:i]))
+				start = i + 1
+			} else if i+1 == len(data) {
+				lines = append(lines, string(data[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	if start < len(data) {
+		lines = append(lines, string(data[start:]))
 	}
 	return lines
 }
@@ -305,29 +327,43 @@ func compareImages(before, after image.Image) *ImageAnalysis {
 	boundsBefore := before.Bounds()
 	boundsAfter := after.Bounds()
 
-	overlapW := minInt(boundsBefore.Dx(), boundsAfter.Dx())
-	overlapH := minInt(boundsBefore.Dy(), boundsAfter.Dy())
+	overlapW := min(boundsBefore.Dx(), boundsAfter.Dx())
+	overlapH := min(boundsBefore.Dy(), boundsAfter.Dy())
 
 	changed := 0
-	total := maxInt(boundsBefore.Dx()*boundsBefore.Dy(), boundsAfter.Dx()*boundsAfter.Dy())
+	total := max(boundsBefore.Dx()*boundsBefore.Dy(), boundsAfter.Dx()*boundsAfter.Dy())
 	if total == 0 {
 		total = 1
 	}
 
 	var minX, minY, maxX, maxY int
 	foundBounds := false
+	
+	beforeRGBA, beforeIsRGBA := before.(*image.RGBA)
+	afterRGBA, afterIsRGBA := after.(*image.RGBA)
+	useFastPath := beforeIsRGBA && afterIsRGBA
+
 	for y := 0; y < overlapH; y++ {
 		for x := 0; x < overlapW; x++ {
-			if !samePixel(before, after, x, y) {
+			isSame := false
+			if useFastPath {
+				bOff := beforeRGBA.PixOffset(boundsBefore.Min.X+x, boundsBefore.Min.Y+y)
+				aOff := afterRGBA.PixOffset(boundsAfter.Min.X+x, boundsAfter.Min.Y+y)
+				isSame = bytes.Equal(beforeRGBA.Pix[bOff:bOff+4], afterRGBA.Pix[aOff:aOff+4])
+			} else {
+				isSame = samePixel(before, after, x, y)
+			}
+			
+			if !isSame {
 				changed++
 				if !foundBounds {
 					minX, minY, maxX, maxY = x, y, x, y
 					foundBounds = true
 				} else {
-					minX = minInt(minX, x)
-					minY = minInt(minY, y)
-					maxX = maxInt(maxX, x)
-					maxY = maxInt(maxY, y)
+					minX = min(minX, x)
+					minY = min(minY, y)
+					maxX = max(maxX, x)
+					maxY = max(maxY, y)
 				}
 			}
 		}
@@ -410,7 +446,7 @@ func decodeImage(data []byte) (image.Image, bool) {
 }
 
 func compareBinary(before, after []byte) *BinaryAnalysis {
-	limit := minInt(len(before), len(after))
+	limit := min(len(before), len(after))
 	firstDiff := limit
 	diffCount := 0
 	for i := 0; i < limit; i++ {
@@ -464,19 +500,7 @@ func hexPreview(data []byte, center int) string {
 	return hex.EncodeToString(data[start:end])
 }
 
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
 
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
 
 func absInt(v int) int {
 	if v < 0 {
