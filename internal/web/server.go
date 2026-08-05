@@ -116,10 +116,11 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 type StartRequest struct {
-	Directory string `json:"directory"`
-	CaseID    string `json:"case_id"`
-	CaseName  string `json:"case_name"`
-	Analyst   string `json:"analyst"`
+	Directory              string `json:"directory"`
+	CaseID                 string `json:"case_id"`
+	CaseName               string `json:"case_name"`
+	Analyst                string `json:"analyst"`
+	EnableAdvancedAnalysis bool   `json:"enable_advanced_analysis"`
 }
 
 type QuoteRequest struct {
@@ -160,9 +161,13 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 
 	progressChan := make(chan hashing.ProgressUpdate, 100)
 	timestamp := time.Now().Format("20060102_150405")
-	snapshotDir := fmt.Sprintf("manifest_%s.snapshots", timestamp)
-	if absSnapshotDir, err := filepath.Abs(snapshotDir); err == nil {
-		snapshotDir = absSnapshotDir
+	
+	snapshotDir := ""
+	if req.EnableAdvancedAnalysis {
+		snapshotDir = fmt.Sprintf("manifest_%s.snapshots", timestamp)
+		if absSnapshotDir, err := filepath.Abs(snapshotDir); err == nil {
+			snapshotDir = absSnapshotDir
+		}
 	}
 
 	go func() {
