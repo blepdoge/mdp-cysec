@@ -914,6 +914,9 @@ func (s *Server) buildReport() (*IntegrityReport, error) {
 	if s.currentManifest == nil {
 		return nil, fmt.Errorf("no manifest loaded")
 	}
+	if s.lastVerification == nil {
+		return nil, fmt.Errorf("integrity verification has not been performed yet. Please run verification first")
+	}
 	return &IntegrityReport{
 		GeneratedAt:   time.Now().UTC(),
 		Manifest:      s.currentManifest,

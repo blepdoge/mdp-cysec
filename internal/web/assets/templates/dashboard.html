@@ -11,10 +11,10 @@
                     <button id="export-dropdown-btn" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
                         📤 Export <span>▼</span>
                     </button>
-                    <div id="export-dropdown-menu" style="display: none; position: absolute; right: 0; top: 125%; background: #1e293b; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.6); z-index: 100; min-width: 190px; overflow: hidden; backdrop-filter: blur(10px);">
-                        <a href="/api/export/manifest" style="display: block; padding: 0.65rem 1rem; color: var(--text-primary); text-decoration: none; font-size: 0.85rem; transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='transparent'">📋 Master manifest</a>
-                        <a href="/api/export/report.json" style="display: block; padding: 0.65rem 1rem; color: var(--text-primary); text-decoration: none; font-size: 0.85rem; transition: background 0.15s; border-top: 1px solid rgba(255,255,255,0.05);" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='transparent'">📊 JSON integrity report</a>
-                        <a href="/api/export/report.html" style="display: block; padding: 0.65rem 1rem; color: var(--text-primary); text-decoration: none; font-size: 0.85rem; transition: background 0.15s; border-top: 1px solid rgba(255,255,255,0.05);" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='transparent'">📄 HTML integrity report</a>
+                    <div id="export-dropdown-menu" style="display: none; position: absolute; right: 0; top: 125%; background: #1e293b; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.6); z-index: 100; min-width: 200px; overflow: hidden; backdrop-filter: blur(10px);">
+                        <a href="/api/export/manifest" id="export-manifest-link" style="display: block; padding: 0.65rem 1rem; color: var(--text-primary); text-decoration: none; font-size: 0.85rem; transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='transparent'">📋 Master manifest</a>
+                        <a href="/api/export/report.json" id="export-report-json-link" title="Run verification first to export integrity report" style="display: block; padding: 0.65rem 1rem; color: var(--text-secondary); text-decoration: none; font-size: 0.85rem; transition: background 0.15s; border-top: 1px solid rgba(255,255,255,0.05); opacity: 0.4; pointer-events: none; cursor: not-allowed;">📊 JSON integrity report</a>
+                        <a href="/api/export/report.html" id="export-report-html-link" title="Run verification first to export integrity report" style="display: block; padding: 0.65rem 1rem; color: var(--text-secondary); text-decoration: none; font-size: 0.85rem; transition: background 0.15s; border-top: 1px solid rgba(255,255,255,0.05); opacity: 0.4; pointer-events: none; cursor: not-allowed;">📄 HTML integrity report</a>
                     </div>
                 </div>
 
@@ -1249,6 +1249,28 @@
         switchTab('verification');
         verificationDirectory.innerText = data.directory || '';
         verificationSummary.innerText = `${data.verified} verified, ${data.missing} missing, ${data.modified} modified, ${data.extra} extra. Compared ${data.total_current} current files against ${data.total_expected} manifest entries.`;
+
+        // Enable integrity report exports in dropdown now that verification has run
+        const reportJsonLink = document.getElementById('export-report-json-link');
+        const reportHtmlLink = document.getElementById('export-report-html-link');
+        if (reportJsonLink) {
+            reportJsonLink.style.opacity = '1';
+            reportJsonLink.style.pointerEvents = 'auto';
+            reportJsonLink.style.cursor = 'pointer';
+            reportJsonLink.style.color = 'var(--text-primary)';
+            reportJsonLink.title = 'Export JSON integrity report';
+            reportJsonLink.onmouseover = function() { this.style.background = 'rgba(255,255,255,0.08)'; };
+            reportJsonLink.onmouseout = function() { this.style.background = 'transparent'; };
+        }
+        if (reportHtmlLink) {
+            reportHtmlLink.style.opacity = '1';
+            reportHtmlLink.style.pointerEvents = 'auto';
+            reportHtmlLink.style.cursor = 'pointer';
+            reportHtmlLink.style.color = 'var(--text-primary)';
+            reportHtmlLink.title = 'Export HTML integrity report';
+            reportHtmlLink.onmouseover = function() { this.style.background = 'rgba(255,255,255,0.08)'; };
+            reportHtmlLink.onmouseout = function() { this.style.background = 'transparent'; };
+        }
 
         const details = data.details || [];
         if (details.length === 0) {
