@@ -4,8 +4,6 @@
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
             <h2 style="font-size: 1.5rem; color: var(--accent-color); margin: 0;">Case dashboard</h2>
             <div style="display: flex; gap: 0.5rem; align-items: center; position: relative;">
-                <button id="verify-btn" class="btn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; background: var(--success-color);">🛡️ Verify integrity</button>
-                
                 <!-- Export Dropdown -->
                 <div style="position: relative; display: inline-block;">
                     <button id="export-dropdown-btn" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
@@ -68,9 +66,10 @@
             <label for="verify-directory-input" class="stat-label" style="display: block; margin-bottom: 0.4rem; font-size: 0.85rem; color: var(--text-secondary); font-weight: 600;">
                 🔍 Target directory for integrity check (Folder to verify against manifest)
             </label>
-            <div style="display: grid; grid-template-columns: 1fr auto; gap: 0.75rem; align-items: center;">
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 0.75rem; align-items: center;">
                 <input id="verify-directory-input" type="text" placeholder="Verification folder path, e.g. D:\Evidence\Case001" value="{{.Manifest.CaseMetadata.EvidenceDirectory}}" style="padding: 0.65rem 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; min-width: 0;">
-                <button id="use-manifest-source-btn" class="btn btn-secondary" style="padding: 0.65rem 0.9rem;">Use manifest source</button>
+                <button id="use-manifest-source-btn" class="btn btn-secondary" style="padding: 0.65rem 0.9rem; white-space: nowrap;">Use manifest source</button>
+                <button id="verify-btn" class="btn" style="padding: 0.65rem 1.1rem; background: var(--success-color); font-weight: 600; white-space: nowrap; display: flex; align-items: center; gap: 0.4rem;">🛡️ Verify integrity</button>
             </div>
         </div>
 
