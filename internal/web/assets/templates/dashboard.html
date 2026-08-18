@@ -644,6 +644,9 @@
             }
 
             selectedArtifactPaths.clear();
+            document.querySelectorAll('.artifact-row-cb:checked').forEach(cb => {
+                cb.checked = false;
+            });
         } catch (err) {
             setQuoteStatus(`Bulk quote failed: ${err.message}`, 'error');
             alert(`Bulk quote failed: ${err.message}`);
