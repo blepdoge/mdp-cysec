@@ -1117,29 +1117,6 @@
                     </div>` : ''}
                 </div>
             `);
-        } else if (analysis.kind === 'binary' && analysis.binary) {
-            const bin = analysis.binary;
-            parts.push(`
-                <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 0.85rem;">
-                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">Binary diff</div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.65rem; color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.75rem;">
-                        <div>Before size: <strong style="color: white;">${formatBytes(bin.size_before_bytes || 0)}</strong></div>
-                        <div>After size: <strong style="color: white;">${formatBytes(bin.size_after_bytes || 0)}</strong></div>
-                        <div>First diff offset: <strong style="color: white;">${bin.first_different_offset || 0}</strong></div>
-                        <div>Different bytes: <strong style="color: white;">${bin.differing_byte_count || 0}</strong></div>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
-                        <div>
-                            <div style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 0.35rem;">Before preview</div>
-                            <code style="display: block; word-break: break-all; white-space: pre-wrap; color: #bfdbfe;">${escapeHtml(bin.before_preview || '')}</code>
-                        </div>
-                        <div>
-                            <div style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 0.35rem;">After preview</div>
-                            <code style="display: block; word-break: break-all; white-space: pre-wrap; color: #fecaca;">${escapeHtml(bin.after_preview || '')}</code>
-                        </div>
-                    </div>
-                </div>
-            `);
         }
 
         return parts.join('');

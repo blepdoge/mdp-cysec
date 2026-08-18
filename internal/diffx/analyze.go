@@ -1,13 +1,7 @@
 package diffx
 
 import (
-	"bytes"
-	"encoding/hex"
 	"fmt"
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"os"
 	"path/filepath"
 	"unicode/utf8"
@@ -16,16 +10,15 @@ import (
 )
 
 type Analysis struct {
-	Kind         string          `json:"kind"`
-	Summary      string          `json:"summary"`
-	BaselinePath string          `json:"baseline_path,omitempty"`
-	CurrentPath  string          `json:"current_path,omitempty"`
-	BaselineSize int64           `json:"baseline_size_bytes,omitempty"`
-	CurrentSize  int64           `json:"current_size_bytes,omitempty"`
-	Text         *TextAnalysis   `json:"text,omitempty"`
-	Image        *ImageAnalysis  `json:"image,omitempty"`
-	Binary       *BinaryAnalysis `json:"binary,omitempty"`
-	Available    bool            `json:"available"`
+	Kind         string         `json:"kind"`
+	Summary      string         `json:"summary"`
+	BaselinePath string         `json:"baseline_path,omitempty"`
+	CurrentPath  string         `json:"current_path,omitempty"`
+	BaselineSize int64          `json:"baseline_size_bytes,omitempty"`
+	CurrentSize  int64          `json:"current_size_bytes,omitempty"`
+	Text         *TextAnalysis  `json:"text,omitempty"`
+	Image        *ImageAnalysis `json:"image,omitempty"`
+	Available    bool           `json:"available"`
 }
 
 type TextAnalysis struct {
@@ -40,35 +33,6 @@ type TextOp struct {
 	AfterLine  int    `json:"after_line,omitempty"`
 	Before     string `json:"before,omitempty"`
 	After      string `json:"after,omitempty"`
-}
-
-type ImageAnalysis struct {
-	BeforeWidth          int          `json:"before_width"`
-	BeforeHeight         int          `json:"before_height"`
-	AfterWidth           int          `json:"after_width"`
-	AfterHeight          int          `json:"after_height"`
-	OverlapChangedPixels int          `json:"overlap_changed_pixels"`
-	OverlapTotalPixels   int          `json:"overlap_total_pixels"`
-	ChangedPercent       float64      `json:"changed_percent"`
-	Bounds               *ImageBounds `json:"bounds,omitempty"`
-	SuspectedCrop        bool         `json:"suspected_crop"`
-	Notes                []string     `json:"notes,omitempty"`
-}
-
-type ImageBounds struct {
-	MinX int `json:"min_x"`
-	MinY int `json:"min_y"`
-	MaxX int `json:"max_x"`
-	MaxY int `json:"max_y"`
-}
-
-type BinaryAnalysis struct {
-	FirstDifferentOffset int64  `json:"first_different_offset"`
-	DifferingByteCount   int    `json:"differing_byte_count"`
-	BeforePreview        string `json:"before_preview"`
-	AfterPreview         string `json:"after_preview"`
-	SizeBefore           int64  `json:"size_before_bytes"`
-	SizeAfter            int64  `json:"size_after_bytes"`
 }
 
 func AnalyzeChange(expected models.Artifact, currentPath, snapshotDir string) (*Analysis, error) {
@@ -92,7 +56,6 @@ func AnalyzeChange(expected models.Artifact, currentPath, snapshotDir string) (*
 		CurrentPath:  currentPath,
 		BaselineSize: int64(len(baseline)),
 		CurrentSize:  int64(len(current)),
-		Available:    true,
 	}
 
 	if baselineImage, ok := decodeImage(baseline); ok {
@@ -101,6 +64,7 @@ func AnalyzeChange(expected models.Artifact, currentPath, snapshotDir string) (*
 			analysis.Kind = "image"
 			analysis.Image = imageAnalysis
 			analysis.Summary = imageSummary(imageAnalysis)
+			analysis.Available = true
 			return analysis, nil
 		}
 	}
@@ -110,13 +74,13 @@ func AnalyzeChange(expected models.Artifact, currentPath, snapshotDir string) (*
 		analysis.Kind = "text"
 		analysis.Text = textAnalysis
 		analysis.Summary = textSummary(textAnalysis)
+		analysis.Available = true
 		return analysis, nil
 	}
 
-	binaryAnalysis := compareBinary(baseline, current)
-	analysis.Kind = "binary"
-	analysis.Binary = binaryAnalysis
-	analysis.Summary = binarySummary(binaryAnalysis)
+	analysis.Kind = "unsupported"
+	analysis.Available = false
+	analysis.Summary = "Deep analysis is only supported for text and image files."
 	return analysis, nil
 }
 
@@ -322,185 +286,6 @@ func textSummary(t *TextAnalysis) string {
 	}
 	return fmt.Sprintf("%d line(s) removed, %d line(s) added.", removed, added)
 }
-
-func compareImages(before, after image.Image) *ImageAnalysis {
-	boundsBefore := before.Bounds()
-	boundsAfter := after.Bounds()
-
-	overlapW := min(boundsBefore.Dx(), boundsAfter.Dx())
-	overlapH := min(boundsBefore.Dy(), boundsAfter.Dy())
-
-	changed := 0
-	total := max(boundsBefore.Dx()*boundsBefore.Dy(), boundsAfter.Dx()*boundsAfter.Dy())
-	if total == 0 {
-		total = 1
-	}
-
-	var minX, minY, maxX, maxY int
-	foundBounds := false
-	
-	beforeRGBA, beforeIsRGBA := before.(*image.RGBA)
-	afterRGBA, afterIsRGBA := after.(*image.RGBA)
-	useFastPath := beforeIsRGBA && afterIsRGBA
-
-	for y := 0; y < overlapH; y++ {
-		for x := 0; x < overlapW; x++ {
-			isSame := false
-			if useFastPath {
-				bOff := beforeRGBA.PixOffset(boundsBefore.Min.X+x, boundsBefore.Min.Y+y)
-				aOff := afterRGBA.PixOffset(boundsAfter.Min.X+x, boundsAfter.Min.Y+y)
-				isSame = bytes.Equal(beforeRGBA.Pix[bOff:bOff+4], afterRGBA.Pix[aOff:aOff+4])
-			} else {
-				isSame = samePixel(before, after, x, y)
-			}
-			
-			if !isSame {
-				changed++
-				if !foundBounds {
-					minX, minY, maxX, maxY = x, y, x, y
-					foundBounds = true
-				} else {
-					minX = min(minX, x)
-					minY = min(minY, y)
-					maxX = max(maxX, x)
-					maxY = max(maxY, y)
-				}
-			}
-		}
-	}
-
-	changed += boundsBefore.Dx()*boundsBefore.Dy() - overlapW*overlapH
-	changed += boundsAfter.Dx()*boundsAfter.Dy() - overlapW*overlapH
-
-	notes := make([]string, 0, 4)
-	if boundsBefore.Dx() != boundsAfter.Dx() || boundsBefore.Dy() != boundsAfter.Dy() {
-		notes = append(notes, fmt.Sprintf("dimensions changed from %dx%d to %dx%d", boundsBefore.Dx(), boundsBefore.Dy(), boundsAfter.Dx(), boundsAfter.Dy()))
-	}
-	if foundBounds {
-		notes = append(notes, fmt.Sprintf("changed region spans x=%d..%d, y=%d..%d", minX, maxX, minY, maxY))
-	}
-
-	suspectedCrop := false
-	if boundsBefore.Dx() != boundsAfter.Dx() || boundsBefore.Dy() != boundsAfter.Dy() {
-		if foundBounds {
-			touchesEdge := minX <= 3 || minY <= 3 || maxX >= overlapW-4 || maxY >= overlapH-4
-			if touchesEdge {
-				suspectedCrop = true
-				notes = append(notes, "differences are concentrated near an image edge, which suggests cropping or canvas resize")
-			}
-		} else {
-			suspectedCrop = true
-			notes = append(notes, "image dimensions changed without overlap, which suggests a crop or replacement")
-		}
-	}
-
-	percent := 0.0
-	if total > 0 {
-		percent = float64(changed) * 100 / float64(total)
-	}
-
-	var bounds *ImageBounds
-	if foundBounds {
-		bounds = &ImageBounds{MinX: minX, MinY: minY, MaxX: maxX, MaxY: maxY}
-	}
-
-	return &ImageAnalysis{
-		BeforeWidth:          boundsBefore.Dx(),
-		BeforeHeight:         boundsBefore.Dy(),
-		AfterWidth:           boundsAfter.Dx(),
-		AfterHeight:          boundsAfter.Dy(),
-		OverlapChangedPixels: changed,
-		OverlapTotalPixels:   total,
-		ChangedPercent:       percent,
-		Bounds:               bounds,
-		SuspectedCrop:        suspectedCrop,
-		Notes:                notes,
-	}
-}
-
-func imageSummary(img *ImageAnalysis) string {
-	if img == nil {
-		return "Image diff unavailable."
-	}
-	if img.BeforeWidth == img.AfterWidth && img.BeforeHeight == img.AfterHeight {
-		return fmt.Sprintf("%.2f%% of pixels changed.", img.ChangedPercent)
-	}
-	if img.SuspectedCrop {
-		return fmt.Sprintf("Image dimensions changed from %dx%d to %dx%d; likely crop or resize.", img.BeforeWidth, img.BeforeHeight, img.AfterWidth, img.AfterHeight)
-	}
-	return fmt.Sprintf("Image dimensions changed from %dx%d to %dx%d.", img.BeforeWidth, img.BeforeHeight, img.AfterWidth, img.AfterHeight)
-}
-
-func samePixel(a, b image.Image, x, y int) bool {
-	ar, ag, ab, aa := a.At(a.Bounds().Min.X+x, a.Bounds().Min.Y+y).RGBA()
-	br, bg, bb, ba := b.At(b.Bounds().Min.X+x, b.Bounds().Min.Y+y).RGBA()
-	return ar == br && ag == bg && ab == bb && aa == ba
-}
-
-func decodeImage(data []byte) (image.Image, bool) {
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, false
-	}
-	return img, true
-}
-
-func compareBinary(before, after []byte) *BinaryAnalysis {
-	limit := min(len(before), len(after))
-	firstDiff := limit
-	diffCount := 0
-	for i := 0; i < limit; i++ {
-		if before[i] != after[i] {
-			diffCount++
-			if firstDiff == limit {
-				firstDiff = i
-			}
-		}
-	}
-	diffCount += absInt(len(before) - len(after))
-	if firstDiff == limit && len(before) != len(after) {
-		firstDiff = limit
-	}
-
-	return &BinaryAnalysis{
-		FirstDifferentOffset: int64(firstDiff),
-		DifferingByteCount:   diffCount,
-		BeforePreview:        hexPreview(before, firstDiff),
-		AfterPreview:         hexPreview(after, firstDiff),
-		SizeBefore:           int64(len(before)),
-		SizeAfter:            int64(len(after)),
-	}
-}
-
-func binarySummary(b *BinaryAnalysis) string {
-	if b == nil {
-		return "Binary diff unavailable."
-	}
-	if b.SizeBefore == b.SizeAfter {
-		return fmt.Sprintf("Binary content differs at byte offset %d (%d differing bytes).", b.FirstDifferentOffset, b.DifferingByteCount)
-	}
-	return fmt.Sprintf("Binary size changed from %d to %d bytes; first difference at byte offset %d.", b.SizeBefore, b.SizeAfter, b.FirstDifferentOffset)
-}
-
-func hexPreview(data []byte, center int) string {
-	if len(data) == 0 {
-		return ""
-	}
-	if center < 0 {
-		center = 0
-	}
-	start := center - 8
-	if start < 0 {
-		start = 0
-	}
-	end := center + 8
-	if end > len(data) {
-		end = len(data)
-	}
-	return hex.EncodeToString(data[start:end])
-}
-
-
 
 func absInt(v int) int {
 	if v < 0 {
