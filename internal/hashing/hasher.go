@@ -1,6 +1,7 @@
 package hashing
 
 import (
+	"cmp"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -13,7 +14,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -132,10 +132,10 @@ func (h *Hasher) GenerateManifest(progressChan chan<- ProgressUpdate) (*models.M
 	// is reproducible across runs. Sort by name, with path as tie-breaker since
 	// names are not unique.
 	slices.SortFunc(artifacts, func(a, b models.Artifact) int {
-		if c := strings.Compare(a.Name, b.Name); c != 0 {
+		if c := cmp.Compare(a.Name, b.Name); c != 0 {
 			return c
 		}
-		return strings.Compare(a.Path, b.Path)
+		return cmp.Compare(a.Path, b.Path)
 	})
 
 	now := time.Now().UTC()
@@ -174,8 +174,15 @@ var hashersPool = sync.Pool{
 	},
 }
 
-// use 4mB buffer instead of default 32kb one, improve large file performance
-var bufPool = sync.Pool{
+// Adaptive buffer pools: 64KB for small files (reduces memory & cache thrashing), 4MB for large files.
+var smallBufPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 64*1024) // 64KB
+		return &buf
+	},
+}
+
+var largeBufPool = sync.Pool{
 	New: func() any {
 		buf := make([]byte, 4*1024*1024) // 4MB
 		return &buf
@@ -199,8 +206,14 @@ func hashFile(rootDir, snapshotDir, filePath string, info os.FileInfo) (models.A
 		hashersPool.Put(hs)
 	}()
 
-	buf := bufPool.Get().(*[]byte)
-	defer bufPool.Put(buf)
+	var buf *[]byte
+	if info.Size() <= 64*1024 {
+		buf = smallBufPool.Get().(*[]byte)
+		defer smallBufPool.Put(buf)
+	} else {
+		buf = largeBufPool.Get().(*[]byte)
+		defer largeBufPool.Put(buf)
+	}
 
 	relPath, err := filepath.Rel(rootDir, filePath)
 	if err != nil {
@@ -232,9 +245,13 @@ func hashFile(rootDir, snapshotDir, filePath string, info os.FileInfo) (models.A
 		return models.Artifact{}, err
 	}
 
-	artifactSHA256 := hex.EncodeToString(hs.sha256.Sum(nil))
-	artifactSHA1 := hex.EncodeToString(hs.sha1.Sum(nil))
-	artifactMD5 := hex.EncodeToString(hs.md5.Sum(nil))
+	var sha256Buf [32]byte
+	var sha1Buf [20]byte
+	var md5Buf [16]byte
+
+	artifactSHA256 := hex.EncodeToString(hs.sha256.Sum(sha256Buf[:0]))
+	artifactSHA1 := hex.EncodeToString(hs.sha1.Sum(sha1Buf[:0]))
+	artifactMD5 := hex.EncodeToString(hs.md5.Sum(md5Buf[:0]))
 
 	artifact := models.Artifact{
 		Name:      info.Name(),
