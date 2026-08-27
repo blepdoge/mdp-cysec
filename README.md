@@ -81,31 +81,11 @@ go run cmd/mdp-cysec/main.go -cli -dir /path/to/evidence -snapshots /path/to/sna
 
 A mixed real-world dataset comprising nested directories, audio samples, libraries, and config files.
 
-| Tool | Mean Execution Time ($\pm\ \sigma$) | Effective Throughput | Relative Speed |
-| :--- | :--- | :--- | :--- |
-| **`mdp-cysec`** | **$1.273\text{ s} \pm 0.081\text{ s}$** | **$\approx 1,633\text{ MB/s}$** | **$1.00\times$ (Fastest)** |
-| **`RHash` (v1.4.6)** | $9.112\text{ s} \pm 0.139\text{ s}$ | $\approx 228\text{ MB/s}$ | $7.16\times$ slower |
-| **`HashDeep` (v4.4)** | $21.579\text{ s} \pm 0.790\text{ s}$ | $\approx 96\text{ MB/s}$ | $16.95\times$ slower |
-
-### 2. Synthetic Workload: Small Files (1,000 files in subdirectories)
-
-Tests directory traversal pipelining, metadata syscalls, and adaptive memory pool efficiency.
-
-| Tool | Mean Execution Time ($\pm\ \sigma$) | Relative Speed |
-| :--- | :--- | :--- |
-| **`mdp-cysec`** | **$71.9\text{ ms} \pm 10.1\text{ ms}$** | **$1.00\times$ (Fastest)** |
-| **`RHash` (v1.4.6)** | $213.3\text{ ms} \pm 14.6\text{ ms}$ | $2.97\times$ slower |
-| **`HashDeep` (v4.4)** | $310.5\text{ ms} \pm 14.8\text{ ms}$ | $4.32\times$ slower |
-
-### 3. Synthetic Workload: Large Files ($3 \times 50\text{ MB} = 150\text{ MB}$)
-
-Tests streaming buffer saturation, zero-allocation digest buffers, and hardware crypto extensions (SHA-NI / AVX2).
-
-| Tool | Mean Execution Time ($\pm\ \sigma$) | Effective Throughput | Relative Speed |
-| :--- | :--- | :--- | :--- |
-| **`mdp-cysec`** | **$229.8\text{ ms} \pm 6.3\text{ ms}$** | **$\approx 653\text{ MB/s}$** | **$1.00\times$ (Fastest)** |
-| **`RHash` (v1.4.6)** | $711.3\text{ ms} \pm 16.9\text{ ms}$ | $\approx 211\text{ MB/s}$ | $3.10\times$ slower |
-| **`HashDeep` (v4.4)** | $1588.0\text{ ms} \pm 62.0\text{ ms}$ | $\approx 94\text{ MB/s}$ | $6.91\times$ slower |
+| Tool | Configuration | Mean Execution Time ($\pm\ \sigma$) | Effective Throughput | Relative Speed |
+| :--- | :--- | :--- | :--- | :--- |
+| **`mdp-cysec`** | 44 worker goroutines | **$1.293\text{ s} \pm 0.071\text{ s}$** | **$\approx 1,608\text{ MB/s}$** | **$1.00\times$ (Fastest)** |
+| **`HashDeep` (v4.4)** | `-j 22` (22 threads) | $3.071\text{ s} \pm 0.129\text{ s}$ | $\approx 677\text{ MB/s}$ | $2.38\times$ slower |
+| **`RHash` (v1.4.6)** | Single-threaded | $9.897\text{ s} \pm 0.407\text{ s}$ | $\approx 210\text{ MB/s}$ | $7.66\times$ slower |
 
 ### Reproducing the Benchmarks
 
@@ -118,8 +98,8 @@ go build -o mdp-cysec.exe ./cmd/mdp-cysec
 # Run comparative benchmark across tools
 hyperfine --warmup 2 --runs 5 \
   "./mdp-cysec.exe -cli -dir /path/to/target" \
-  "rhash -r -M -H --sha256 /path/to/target" \
-  "hashdeep64 -c md5,sha1,sha256 -r -j0 /path/to/target"
+  "hashdeep64 -c md5,sha1,sha256 -r -j 22 /path/to/target" \
+  "rhash -r -M -H --sha256 /path/to/target"
 ```
 
 ## Demo data
