@@ -98,3 +98,81 @@ func TestGenerateManifestStoresSnapshots(t *testing.T) {
 		t.Fatalf("snapshot directory = %q, want %q", manifest.CaseMetadata.SnapshotDirectory, snapshotDir)
 	}
 }
+
+func TestGenerateManifestProgressUpdates(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < 20; i++ {
+		writeFile(t, root, filepath.Join("subdir", "file_"+string(rune('a'+i))+".txt"), "content")
+	}
+
+	progressChan := make(chan ProgressUpdate, 100)
+	var updates []ProgressUpdate
+
+	done := make(chan struct{})
+	go func() {
+		for u := range progressChan {
+			updates = append(updates, u)
+		}
+		close(done)
+	}()
+
+	manifest, err := NewHasher(root).GenerateManifest(progressChan)
+	if err != nil {
+		t.Fatalf("GenerateManifest failed: %v", err)
+	}
+	<-done
+
+	if manifest.CaseMetadata.TotalArtifacts != 20 {
+		t.Fatalf("TotalArtifacts = %d, want 20", manifest.CaseMetadata.TotalArtifacts)
+	}
+	if len(updates) == 0 {
+		t.Fatal("expected at least one progress update")
+	}
+	last := updates[len(updates)-1]
+	if last.Processed != 20 || last.Total != 20 {
+		t.Errorf("last update = %+v, want Processed=20, Total=20", last)
+	}
+}
+
+func BenchmarkHasherSmallFiles(b *testing.B) {
+	root := b.TempDir()
+	content := []byte("hello world small file content benchmarking test")
+	for i := 0; i < 500; i++ {
+		path := filepath.Join(root, "sub", "file_"+string(rune('a'+(i%26)))+"_"+string(rune('0'+(i%10)))+".txt")
+		_ = os.MkdirAll(filepath.Dir(path), 0755)
+		_ = os.WriteFile(path, content, 0644)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := NewHasher(root).GenerateManifest(nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkHasherLargeFileThroughput(b *testing.B) {
+	root := b.TempDir()
+	fileSize := int64(20 * 1024 * 1024) // 20 MB
+	f, err := os.Create(filepath.Join(root, "large.bin"))
+	if err != nil {
+		b.Fatal(err)
+	}
+	buf := make([]byte, 1024*1024)
+	for i := 0; i < 20; i++ {
+		_, _ = f.Write(buf)
+	}
+	_ = f.Close()
+
+	b.SetBytes(fileSize)
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, err := NewHasher(root).GenerateManifest(nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+

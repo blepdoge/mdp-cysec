@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"mdp-cysec/internal/models"
@@ -52,59 +53,21 @@ func (h *Hasher) GenerateManifest(progressChan chan<- ProgressUpdate) (*models.M
 		}
 	}
 
-	// Step 1: Gather all files
 	type fileEntry struct {
 		path string
 		info fs.FileInfo
 	}
 
-	var files []fileEntry
-
-	err := filepath.WalkDir(h.RootDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d == nil {
-			return nil
-		}
-		if d.Type().IsRegular() {
-			info, err := d.Info()
-			if err == nil {
-				files = append(files, fileEntry{path, info})
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	totalFiles := len(files)
-	if progressChan != nil {
-		progressChan <- ProgressUpdate{Total: totalFiles, Processed: 0}
-	}
-
-	if totalFiles == 0 {
-		now := time.Now().UTC()
-		manifest.CaseMetadata = models.CaseMetadata{
-			ManifestVersion:   "1.0",
-			TotalArtifacts:    0,
-			EvidenceDirectory: h.RootDir,
-			SnapshotDirectory: h.SnapshotDir,
-			CreationTimestamp: &now,
-		}
-		if progressChan != nil {
-			close(progressChan)
-		}
-		return manifest, nil
-	}
-
-	// Step 2: Set up worker pool
 	numWorkers := runtime.NumCPU() * 2
-	bufferSize := totalFiles
-	if bufferSize > 10000 {
-		bufferSize = 10000
+	if numWorkers < 4 {
+		numWorkers = 4
 	}
-	jobs := make(chan fileEntry, bufferSize)
-	resultsChan := make(chan models.Artifact, bufferSize)
 
+	// Buffered channels to decouple directory walk from worker consumption
+	jobs := make(chan fileEntry, 1024)
+	resultsChan := make(chan models.Artifact, 1024)
+
+	var discoveredFiles atomic.Int64
 	var artifacts []models.Artifact
 	var collectorWg sync.WaitGroup
 
@@ -115,18 +78,20 @@ func (h *Hasher) GenerateManifest(progressChan chan<- ProgressUpdate) (*models.M
 		for art := range resultsChan {
 			artifacts = append(artifacts, art)
 			if progressChan != nil {
-				progressChan <- ProgressUpdate{Total: totalFiles, Processed: len(artifacts)}
+				progressChan <- ProgressUpdate{
+					Total:     int(discoveredFiles.Load()),
+					Processed: len(artifacts),
+				}
 			}
 		}
 	}()
 
-	var wg sync.WaitGroup
-
+	var workerWg sync.WaitGroup
 	// Launch workers
-	for w := 1; w <= numWorkers; w++ {
-		wg.Add(1)
+	for w := 0; w < numWorkers; w++ {
+		workerWg.Add(1)
 		go func() {
-			defer wg.Done()
+			defer workerWg.Done()
 			for entry := range jobs {
 				if art, err := hashFile(h.RootDir, h.SnapshotDir, entry.path, entry.info); err == nil {
 					resultsChan <- art
@@ -135,20 +100,31 @@ func (h *Hasher) GenerateManifest(progressChan chan<- ProgressUpdate) (*models.M
 		}()
 	}
 
-	// Feed jobs
-	for _, entry := range files {
-		jobs <- entry
-	}
-	close(jobs)
+	// Pipelined directory walking directly into jobs channel
+	walkErr := filepath.WalkDir(h.RootDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d == nil {
+			return nil
+		}
+		if d.Type().IsRegular() {
+			if info, err := d.Info(); err == nil {
+				discoveredFiles.Add(1)
+				jobs <- fileEntry{path: path, info: info}
+			}
+		}
+		return nil
+	})
 
-	// Wait for workers to finish
-	wg.Wait()
+	close(jobs)
+	workerWg.Wait()
 	close(resultsChan)
-	// Wait for collector to finish
 	collectorWg.Wait()
 
 	if progressChan != nil {
 		close(progressChan)
+	}
+
+	if walkErr != nil && len(artifacts) == 0 {
+		return nil, walkErr
 	}
 
 	// The worker pool collects artifacts in nondeterministic order. A canonical
