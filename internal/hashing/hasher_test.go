@@ -176,3 +176,23 @@ func BenchmarkHasherLargeFileThroughput(b *testing.B) {
 	}
 }
 
+func BenchmarkHasherWithSnapshots(b *testing.B) {
+	root := b.TempDir()
+	snapshotDir := filepath.Join(b.TempDir(), "snapshots")
+	content := []byte("benchmark content for testing snapshot creation performance")
+	for i := 0; i < 200; i++ {
+		path := filepath.Join(root, "sub", "file_"+string(rune('a'+(i%26)))+"_"+string(rune('0'+(i%10)))+".txt")
+		_ = os.MkdirAll(filepath.Dir(path), 0755)
+		_ = os.WriteFile(path, content, 0644)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := NewHasher(root, snapshotDir).GenerateManifest(nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+

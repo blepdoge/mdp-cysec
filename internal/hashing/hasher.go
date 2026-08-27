@@ -1,6 +1,7 @@
 package hashing
 
 import (
+	"bufio"
 	"cmp"
 	"crypto/md5"
 	"crypto/sha1"
@@ -222,6 +223,7 @@ func hashFile(rootDir, snapshotDir, filePath string, info os.FileInfo) (models.A
 	relPath = filepath.ToSlash(relPath)
 
 	var snapshotTemp *os.File
+	var snapshotBufWriter *bufio.Writer
 	if snapshotDir != "" {
 		snapshotTemp, err = os.CreateTemp(snapshotDir, ".baseline-*")
 		if err != nil {
@@ -232,17 +234,28 @@ func hashFile(rootDir, snapshotDir, filePath string, info os.FileInfo) (models.A
 				snapshotTemp.Close()
 			}
 		}()
+		snapshotBufWriter = bufio.NewWriterSize(snapshotTemp, 256*1024)
 	}
 
-	writer := io.MultiWriter(hs.md5, hs.sha1, hs.sha256)
-	if snapshotTemp != nil {
-		writer = io.MultiWriter(hs.md5, hs.sha1, hs.sha256, snapshotTemp)
+	var writer io.Writer
+	if snapshotBufWriter != nil {
+		writer = io.MultiWriter(hs.md5, hs.sha1, hs.sha256, snapshotBufWriter)
+	} else {
+		writer = io.MultiWriter(hs.md5, hs.sha1, hs.sha256)
 	}
+
 	if _, err := io.CopyBuffer(writer, f, *buf); err != nil {
 		if snapshotTemp != nil {
 			_ = os.Remove(snapshotTemp.Name())
 		}
 		return models.Artifact{}, err
+	}
+
+	if snapshotBufWriter != nil {
+		if err := snapshotBufWriter.Flush(); err != nil {
+			_ = os.Remove(snapshotTemp.Name())
+			return models.Artifact{}, err
+		}
 	}
 
 	var sha256Buf [32]byte
@@ -263,16 +276,18 @@ func hashFile(rootDir, snapshotDir, filePath string, info os.FileInfo) (models.A
 	}
 
 	if snapshotTemp != nil {
+		tempName := snapshotTemp.Name()
 		if err := snapshotTemp.Close(); err != nil {
-			_ = os.Remove(snapshotTemp.Name())
+			_ = os.Remove(tempName)
 			return models.Artifact{}, err
 		}
+		snapshotTemp = nil
 
 		pathHash := sha256.Sum256([]byte(relPath))
 		snapshotName := fmt.Sprintf("%s_%x.snapshot", artifactSHA256, pathHash[:8])
 		finalPath := filepath.Join(snapshotDir, snapshotName)
-		if err := os.Rename(snapshotTemp.Name(), finalPath); err != nil {
-			_ = os.Remove(snapshotTemp.Name())
+		if err := os.Rename(tempName, finalPath); err != nil {
+			_ = os.Remove(tempName)
 			return models.Artifact{}, err
 		}
 		artifact.BaselineSnapshotPath = snapshotName
