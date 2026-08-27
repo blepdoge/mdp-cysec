@@ -1,76 +1,164 @@
 {{define "dashboard_content"}}
 <div class="glass-panel">
-    <!-- Dashboard Header -->
     <div class="dashboard-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1.5rem; margin-bottom: 1.5rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
             <h2 style="font-size: 1.5rem; color: var(--accent-color); margin: 0;">Case dashboard</h2>
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-                <button id="verify-btn" class="btn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; background: var(--success-color);" onclick="alert('Verify integrity clicked! (This will be implemented in Issue #5: Post-transfer integrity check)')">🛡️ Verify Integrity</button>
-                <a href="/" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">← Back to home</a>
+            <div style="display: flex; gap: 0.5rem; align-items: center; position: relative;">
+                <!-- Export Dropdown -->
+                <div style="position: relative; display: inline-block;">
+                    <button id="export-dropdown-btn" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                        📤 Export <span>▼</span>
+                    </button>
+                    <div id="export-dropdown-menu" style="display: none; position: absolute; right: 0; top: 125%; background: #1e293b; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.6); z-index: 100; min-width: 200px; overflow: hidden; backdrop-filter: blur(10px);">
+                        <a href="/api/export/manifest" id="export-manifest-link" style="display: block; padding: 0.65rem 1rem; color: var(--text-primary); text-decoration: none; font-size: 0.85rem; transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='transparent'">📋 Master manifest</a>
+                        <a href="/api/export/report.json" id="export-report-json-link" title="Run verification first to export integrity report" style="display: block; padding: 0.65rem 1rem; color: var(--text-secondary); text-decoration: none; font-size: 0.85rem; transition: background 0.15s; border-top: 1px solid rgba(255,255,255,0.05); opacity: 0.4; pointer-events: none; cursor: not-allowed;">📊 JSON integrity report</a>
+                        <a href="/api/export/report.html" id="export-report-html-link" title="Run verification first to export integrity report" style="display: block; padding: 0.65rem 1rem; color: var(--text-secondary); text-decoration: none; font-size: 0.85rem; transition: background 0.15s; border-top: 1px solid rgba(255,255,255,0.05); opacity: 0.4; pointer-events: none; cursor: not-allowed;">📄 HTML integrity report</a>
+                    </div>
+                </div>
+
+                <a href="/" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Back to home</a>
             </div>
         </div>
 
-        <!-- Case Metadata Placeholders -->
         <div style="margin-top: 1rem; background: rgba(0,0,0,0.25); padding: 1rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
             <div>
-                <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">Case Merkle Root Hash</span>
+                <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">Case</span>
                 <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary);">
+                    {{if .Manifest.CaseMetadata.CaseID}}{{.Manifest.CaseMetadata.CaseID}}{{else}}Unassigned{{end}}
+                    {{if .Manifest.CaseMetadata.CaseName}} - {{.Manifest.CaseMetadata.CaseName}}{{end}}
+                </span>
+            </div>
+            <div>
+                <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">Analyst</span>
+                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary);">
+                    {{if .Manifest.CaseMetadata.Analyst}}{{.Manifest.CaseMetadata.Analyst}}{{else}}Not recorded{{end}}
+                </span>
+            </div>
+            <div>
+                <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">Source path</span>
+                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary); word-break: break-all;">
+                    {{if .Manifest.CaseMetadata.EvidenceDirectory}}{{.Manifest.CaseMetadata.EvidenceDirectory}}{{else}}Not embedded in manifest{{end}}
+                </span>
+            </div>
+            <div style="grid-column: span 2;">
+                <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">Case Merkle Root Hash</span>
+                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary); word-break: break-all;">
                     {{if .Manifest.CaseMetadata.CaseRootHash}}
                         {{.Manifest.CaseMetadata.CaseRootHash}}
                     {{else}}
-                        <span style="color: var(--text-secondary); font-style: italic;">[Placeholder] Pending calculation (Issue #3)</span>
+                        <span style="color: var(--text-secondary); font-style: italic;">Pending calculation</span>
                     {{end}}
                 </span>
             </div>
             <div>
                 <span class="stat-label" style="display:block; margin-bottom: 0.25rem;">RFC 3161 Timestamp Attestation</span>
-                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary);">
+                <span style="font-family: monospace; font-size: 0.9rem; color: var(--text-primary); word-break: break-all;">
                     {{if .Manifest.CaseMetadata.RFC3161TokenPath}}
                         Certified: {{.Manifest.CaseMetadata.RFC3161TokenPath}}
                     {{else}}
-                        <span style="color: var(--text-secondary); font-style: italic;">[Placeholder] Pending attestation (Issue #3)</span>
+                        <span style="color: var(--text-secondary); font-style: italic;">Pending attestation</span>
                     {{end}}
                 </span>
             </div>
         </div>
 
-        <!-- Overview Stats -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+        <div style="margin-top: 1.25rem;">
+            <label for="verify-directory-input" class="stat-label" style="display: block; margin-bottom: 0.4rem; font-size: 0.85rem; color: var(--text-secondary); font-weight: 600;">
+                🔍 Target directory for integrity check (Folder to verify against manifest)
+            </label>
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 0.75rem; align-items: center;">
+                <input id="verify-directory-input" type="text" placeholder="Verification folder path, e.g. D:\Evidence\Case001" value="{{.Manifest.CaseMetadata.EvidenceDirectory}}" style="padding: 0.65rem 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; min-width: 0;">
+                <button id="use-manifest-source-btn" class="btn btn-secondary" style="padding: 0.65rem 0.9rem; white-space: nowrap;">Use manifest source</button>
+                <button id="verify-btn" class="btn" style="padding: 0.65rem 1.1rem; background: var(--success-color); font-weight: 600; white-space: nowrap; display: flex; align-items: center; gap: 0.4rem;">🛡️ Verify integrity</button>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-top: 1.5rem;">
             <div class="stat-card">
-                <span class="stat-label">Total artifacts</span>
+                <span class="stat-label">Manifest artifacts</span>
                 <span class="stat-value">{{.Manifest.CaseMetadata.TotalArtifacts}}</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Total bytes</span>
+                <span class="stat-value">{{.Manifest.CaseMetadata.TotalBytes}}</span>
             </div>
             <div class="stat-card" style="border-left: 4px solid var(--success-color);">
                 <span class="stat-label">Verified</span>
-                <span class="stat-value" style="color: var(--success-color);">{{.Manifest.CaseMetadata.TotalArtifacts}} <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-secondary);">/ {{.Manifest.CaseMetadata.TotalArtifacts}}</span></span>
+                <span id="verified-count" class="stat-value" style="color: var(--success-color);">0</span>
             </div>
             <div class="stat-card" style="border-left: 4px solid #ef4444;">
                 <span class="stat-label">Missing</span>
-                <span class="stat-value" style="color: #ef4444;">0</span>
+                <span id="missing-count" class="stat-value" style="color: #ef4444;">0</span>
             </div>
             <div class="stat-card" style="border-left: 4px solid #f59e0b;">
                 <span class="stat-label">Modified</span>
-                <span class="stat-value" style="color: #f59e0b;">0</span>
+                <span id="modified-count" class="stat-value" style="color: #f59e0b;">0</span>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid #38bdf8;">
+                <span class="stat-label">Extra</span>
+                <span id="extra-count" class="stat-value" style="color: #38bdf8;">0</span>
+            </div>
+        </div>
+
+        <!-- Verification panel moved to its own tab -->
+    </div>
+
+    <div style="display: flex; gap: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); margin-top: 1.5rem; margin-bottom: 1.5rem;">
+        <button id="tab-explorer-btn" class="btn" style="background: none; border: none; border-bottom: 3px solid var(--accent-color); border-radius: 0; color: var(--text-primary); padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-family: var(--font-family); font-size: 1rem; transition: all 0.2s;">
+            📁 Artifact explorer
+        </button>
+        <button id="tab-report-btn" class="btn" style="background: none; border: none; border-bottom: 3px solid transparent; border-radius: 0; color: var(--text-secondary); padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-family: var(--font-family); font-size: 1rem; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem;">
+            📑 Report exhibits <span id="report-tab-count" style="font-size: 0.75rem; background: rgba(255,255,255,0.15); color: var(--text-primary); padding: 0.1rem 0.5rem; border-radius: 10px;">0</span>
+        </button>
+        <button id="tab-verification-btn" class="btn" style="background: none; border: none; border-bottom: 3px solid transparent; border-radius: 0; color: var(--text-secondary); padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-family: var(--font-family); font-size: 1rem; transition: all 0.2s;">
+            ✅ Verification results
+        </button>
+    </div>
+
+    <div id="quote-status" style="display:none; margin-bottom: 1rem; padding: 0.9rem 1rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.25); color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5;"></div>
+
+    <div id="export-picker-modal" style="display:none; position: fixed; inset: 0; background: rgba(2, 6, 23, 0.82); backdrop-filter: blur(8px); z-index: 1000; padding: 2rem; overflow-y: auto;">
+        <div class="glass-panel" style="max-width: 900px; margin: 0 auto;">
+            <h3 style="margin: 0 0 0.5rem 0; font-size: 1.4rem;">Choose export directory</h3>
+            <p style="margin: 0 0 1rem 0; color: var(--text-secondary);">Navigate to the folder where the quoted exhibit should be copied.</p>
+
+            <div style="margin-bottom: 1rem; font-family: monospace; color: var(--accent-color); background: rgba(0,0,0,0.2); padding: 0.6rem 0.75rem; border-radius: 6px;" id="export-current-dir"></div>
+
+            <div id="export-folder-list" class="folder-list" style="max-height: 360px;"></div>
+
+            <div style="margin-top: 1rem; display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                <button id="export-cancel-btn" class="btn btn-secondary">Cancel</button>
+                <button id="export-confirm-btn" class="btn" disabled style="opacity: 0.5; cursor: not-allowed;">Use this directory</button>
             </div>
         </div>
     </div>
 
-    <!-- Tabs Navigation -->
-    <div style="display: flex; gap: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); margin-top: 1.5rem; margin-bottom: 1.5rem;">
-        <button id="tab-explorer-btn" class="btn" style="background: none; border: none; border-bottom: 3px solid var(--accent-color); border-radius: 0; color: var(--text-primary); padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-family: var(--font-family); font-size: 1rem; transition: all 0.2s;">
-            🔍 Artifact explorer
-        </button>
-        <button id="tab-report-btn" class="btn" style="background: none; border: none; border-bottom: 3px solid transparent; border-radius: 0; color: var(--text-secondary); padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer; font-family: var(--font-family); font-size: 1rem; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem;">
-            📋 Report exhibits <span id="report-tab-count" style="font-size: 0.75rem; background: rgba(255,255,255,0.15); color: var(--text-primary); padding: 0.1rem 0.5rem; border-radius: 10px;">0</span>
-        </button>
+    <div id="verification-detail-modal" style="display:none; position: fixed; inset: 0; background: rgba(2, 6, 23, 0.82); backdrop-filter: blur(8px); z-index: 1000; padding: 2rem; overflow-y: auto;">
+        <div class="glass-panel" style="max-width: 750px; margin: 2rem auto; border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; background: rgba(15, 23, 42, 0.95); padding: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1rem; margin-bottom: 1rem;">
+                <div>
+                    <h3 style="margin: 0 0 0.4rem 0; font-size: 1.3rem;" id="ver-modal-title">Verification details</h3>
+                    <div id="ver-modal-badges" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
+                </div>
+                <button onclick="closeVerificationDetailModal()" class="btn btn-secondary" style="padding: 0.3rem 0.75rem; font-size: 1rem;">✕</button>
+            </div>
+            
+            <div id="ver-modal-body" style="display: flex; flex-direction: column; gap: 1.25rem;"></div>
+
+            <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end;">
+                <button onclick="closeVerificationDetailModal()" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
     </div>
 
     <!-- Tab Contents -->
     <div id="explorer-tab-content">
-        <!-- Explorer -->
         <div class="artifact-explorer">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem; flex-wrap: wrap;">
-                <h3 style="font-size: 1.2rem; margin: 0;">Artifact explorer</h3>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <h3 style="font-size: 1.2rem; margin: 0;">Artifact explorer</h3>
+                    <button id="bulk-quote-btn" class="btn" disabled style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.9rem; font-size: 0.88rem; background: var(--accent-color); color: #000; font-weight: 600;" onclick="triggerBulkQuote()">Quote selected (0)</button>
+                </div>
                 <input type="text" id="search-input" placeholder="Search by name, path, or hash..." style="padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white; width: 300px;">
             </div>
 
@@ -78,32 +166,27 @@
                 <table style="width: 100%; border-collapse: collapse; text-align: left;">
                     <thead>
                         <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            <th style="padding: 0.75rem; width: 40px; text-align: center;"><input type="checkbox" id="select-all-page" style="cursor: pointer; transform: scale(1.15);" title="Select all on this page" onchange="toggleSelectAllPage(this.checked)"></th>
                             <th style="padding: 0.75rem; color: var(--text-secondary);">Path</th>
                             <th style="padding: 0.75rem; color: var(--text-secondary);">SHA256</th>
                             <th style="padding: 0.75rem; color: var(--text-secondary);">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="artifact-table-body">
-                        <!-- Populated via JS -->
-                    </tbody>
+                    <tbody id="artifact-table-body"></tbody>
                 </table>
             </div>
 
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; flex-wrap: wrap; gap: 0.5rem;">
                 <span id="page-info" style="color: var(--text-secondary); font-size: 0.9rem;">Loading...</span>
-                <div style="display: flex; gap: 0.5rem;">
-                    <button id="prev-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Previous</button>
-                    <button id="next-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Next</button>
-                </div>
+                <div id="pagination-controls" style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;"></div>
             </div>
         </div>
     </div>
 
     <div id="report-tab-content" style="display: none;">
-        <!-- Report View (Frontend Mock) -->
         <div class="report-view">
             <h3 style="font-size: 1.2rem; margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">
-                Report exhibits
+                📑 Report exhibits
             </h3>
 
             <div style="overflow-x: auto;">
@@ -113,12 +196,39 @@
                             <th style="padding: 0.75rem; color: var(--text-secondary);">Exhibit name</th>
                             <th style="padding: 0.75rem; color: var(--text-secondary);">Original path</th>
                             <th style="padding: 0.75rem; color: var(--text-secondary);">SHA256</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Integrity</th>
                             <th style="padding: 0.75rem; color: var(--text-secondary); width: 100px;">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="report-table-body">
-                        <!-- Populated via JS -->
-                    </tbody>
+                    <tbody id="report-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="verification-tab-content" style="display: none;">
+        <div id="verification-empty" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+            Run a verification to see results here.
+        </div>
+        <div id="verification-panel" style="display: none; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; overflow: hidden;">
+            <div style="display: flex; justify-content: space-between; gap: 1rem; align-items: center; padding: 1rem; border-bottom: 1px solid rgba(255,255,255,0.08); flex-wrap: wrap;">
+                <div>
+                    <h3 style="font-size: 1rem; margin: 0 0 0.25rem 0;">Verification results</h3>
+                    <p id="verification-summary" style="color: var(--text-secondary); font-size: 0.9rem; margin: 0;"></p>
+                </div>
+                <span id="verification-directory" style="font-family: monospace; color: var(--accent-color); font-size: 0.85rem; word-break: break-all;"></span>
+            </div>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Status</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Path</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Expected SHA256</th>
+                            <th style="padding: 0.75rem; color: var(--text-secondary);">Actual SHA256</th>
+                        </tr>
+                    </thead>
+                    <tbody id="verification-table-body"></tbody>
                 </table>
             </div>
         </div>
@@ -130,40 +240,144 @@
     let currentQuery = "";
     let loadedArtifacts = [];
     let quotedExhibits = [];
+    let exportDirectory = normalizeExportDirectory(localStorage.getItem('quote-export-directory') || "");
+    let pendingQuotePath = "";
+    let pendingQuoteButton = null;
+    let exportPickerSelectedPath = "";
+    let pendingBulkQuote = false;
+    const selectedArtifactPaths = new Set();
+    const quotedExhibitsStorageKey = 'quoted-exhibits';
 
     const searchInput = document.getElementById('search-input');
     const tableBody = document.getElementById('artifact-table-body');
-    const prevBtn = document.getElementById('prev-btn');
-    const nextBtn = document.getElementById('next-btn');
     const pageInfo = document.getElementById('page-info');
+    const verifyBtn = document.getElementById('verify-btn');
+    const verifyDirectoryInput = document.getElementById('verify-directory-input');
+    const useManifestSourceBtn = document.getElementById('use-manifest-source-btn');
+    const manifestSourcePath = {{printf "%q" .Manifest.CaseMetadata.EvidenceDirectory}};
+    const verificationPanel = document.getElementById('verification-panel');
+    const verificationSummary = document.getElementById('verification-summary');
+    const verificationDirectory = document.getElementById('verification-directory');
+    const verificationTableBody = document.getElementById('verification-table-body');
 
     const tabExplorerBtn = document.getElementById('tab-explorer-btn');
     const tabReportBtn = document.getElementById('tab-report-btn');
+    const tabVerificationBtn = document.getElementById('tab-verification-btn');
     const explorerTabContent = document.getElementById('explorer-tab-content');
     const reportTabContent = document.getElementById('report-tab-content');
+    const quoteStatus = document.getElementById('quote-status');
+    const exportPickerModal = document.getElementById('export-picker-modal');
+    const exportCurrentDir = document.getElementById('export-current-dir');
+    const exportFolderList = document.getElementById('export-folder-list');
+    const exportCancelBtn = document.getElementById('export-cancel-btn');
+    const exportConfirmBtn = document.getElementById('export-confirm-btn');
+    const verificationTabContent = document.getElementById('verification-tab-content');
+    const verificationEmpty = document.getElementById('verification-empty');
 
-    // Tab Switching Navigation
     tabExplorerBtn.addEventListener('click', () => switchTab('explorer'));
     tabReportBtn.addEventListener('click', () => switchTab('report'));
+    tabVerificationBtn.addEventListener('click', () => switchTab('verification'));
 
     function switchTab(tab) {
+        tabExplorerBtn.style.borderBottomColor = 'transparent';
+        tabExplorerBtn.style.color = 'var(--text-secondary)';
+        tabReportBtn.style.borderBottomColor = 'transparent';
+        tabReportBtn.style.color = 'var(--text-secondary)';
+        tabVerificationBtn.style.borderBottomColor = 'transparent';
+        tabVerificationBtn.style.color = 'var(--text-secondary)';
+        explorerTabContent.style.display = 'none';
+        reportTabContent.style.display = 'none';
+        verificationTabContent.style.display = 'none';
+
         if (tab === 'explorer') {
             tabExplorerBtn.style.borderBottomColor = 'var(--accent-color)';
             tabExplorerBtn.style.color = 'var(--text-primary)';
-            tabReportBtn.style.borderBottomColor = 'transparent';
-            tabReportBtn.style.color = 'var(--text-secondary)';
             explorerTabContent.style.display = 'block';
-            reportTabContent.style.display = 'none';
-        } else {
-            tabExplorerBtn.style.borderBottomColor = 'transparent';
-            tabExplorerBtn.style.color = 'var(--text-secondary)';
+        } else if (tab === 'report') {
             tabReportBtn.style.borderBottomColor = 'var(--accent-color)';
             tabReportBtn.style.color = 'var(--text-primary)';
-            explorerTabContent.style.display = 'none';
             reportTabContent.style.display = 'block';
+        } else if (tab === 'verification') {
+            tabVerificationBtn.style.borderBottomColor = 'var(--accent-color)';
+            tabVerificationBtn.style.color = 'var(--text-primary)';
+            verificationTabContent.style.display = 'block';
         }
     }
-    window.switchTab = switchTab; // Expose globally for back links
+    window.switchTab = switchTab;
+
+    function normalizeExportDirectory(path) {
+        if (!path || path === "/" || path === "This PC") {
+            return "";
+        }
+        return path;
+    }
+
+    function persistQuotedExhibits() {
+        localStorage.setItem(quotedExhibitsStorageKey, JSON.stringify(quotedExhibits));
+    }
+
+    function hydrateQuotedExhibits() {
+        try {
+            const stored = localStorage.getItem(quotedExhibitsStorageKey);
+            if (!stored) {
+                return;
+            }
+
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+                quotedExhibits = parsed.filter(item =>
+                    item &&
+                    typeof item.original_path === 'string' &&
+                    typeof item.exhibit_name === 'string' &&
+                    typeof item.source_sha256 === 'string'
+                );
+            }
+        } catch (err) {
+            console.warn('Failed to restore quoted exhibits:', err);
+            quotedExhibits = [];
+        }
+    }
+
+    function hasExportDirectory() {
+        return Boolean(exportDirectory && exportDirectory !== "/" && exportDirectory !== "This PC");
+    }
+
+    exportCancelBtn.addEventListener('click', closeExportPicker);
+    exportConfirmBtn.addEventListener('click', () => {
+        if (!exportPickerSelectedPath) {
+            return;
+        }
+
+        closeExportPicker();
+        if (pendingBulkQuote) {
+            pendingBulkQuote = false;
+            bulkQuoteSelectedArtifacts(Array.from(selectedArtifactPaths), exportPickerSelectedPath);
+        } else {
+            quoteArtifact(pendingQuotePath, pendingQuoteButton, exportPickerSelectedPath);
+        }
+    });
+
+    function setQuoteStatus(message, kind = 'neutral') {
+        if (!quoteStatus) return;
+
+        quoteStatus.style.display = 'block';
+        quoteStatus.innerText = message;
+        quoteStatus.style.borderColor = kind === 'success'
+            ? 'rgba(16, 185, 129, 0.45)'
+            : kind === 'error'
+                ? 'rgba(239, 68, 68, 0.55)'
+                : 'rgba(255,255,255,0.08)';
+        quoteStatus.style.color = kind === 'success'
+            ? 'var(--success-color)'
+            : kind === 'error'
+                ? '#fca5a5'
+                : 'var(--text-secondary)';
+        quoteStatus.style.background = kind === 'success'
+            ? 'rgba(16, 185, 129, 0.08)'
+            : kind === 'error'
+                ? 'rgba(239, 68, 68, 0.08)'
+                : 'rgba(0,0,0,0.25)';
+    }
 
     // Debounce search
     let searchTimeout;
@@ -176,17 +390,364 @@
         }, 300);
     });
 
-    prevBtn.addEventListener('click', () => {
-        if (currentPage > 1) {
-            currentPage--;
-            loadArtifacts();
+    function openExportPicker(path, button) {
+        pendingQuotePath = path;
+        pendingQuoteButton = button;
+        exportPickerModal.style.display = 'block';
+        exportDirectory = normalizeExportDirectory(localStorage.getItem('quote-export-directory') || exportDirectory);
+        loadExportDirectory("/");
+    }
+    window.openExportPicker = openExportPicker;
+
+    function closeExportPicker() {
+        exportPickerModal.style.display = 'none';
+        exportPickerSelectedPath = "";
+        exportFolderList.innerHTML = "";
+    }
+
+    function canUseDirectory(path) {
+        return path && path !== "This PC" && path !== "/";
+    }
+
+    function quoteSelectedArtifact(path, button) {
+        if (hasExportDirectory()) {
+            quoteArtifact(path, button, exportDirectory);
+            return;
         }
+
+        openExportPicker(path, button);
+    }
+
+    function loadExportDirectory(path) {
+        const url = path ? '/api/explore?dir=' + encodeURIComponent(path) : '/api/explore';
+        exportCurrentDir.innerText = "Loading...";
+        exportConfirmBtn.disabled = true;
+        exportConfirmBtn.style.opacity = "0.5";
+        exportConfirmBtn.style.cursor = "not-allowed";
+        exportFolderList.innerHTML = `<div style="padding: 0.85rem; color: var(--text-secondary);">Loading folders...</div>`;
+
+        fetch(url)
+            .then(async res => {
+                const text = await res.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (parseErr) {
+                    throw new Error(text || parseErr.message);
+                }
+
+                if (!res.ok) {
+                    throw new Error(data.error || data.message || ('HTTP ' + res.status));
+                }
+
+                exportPickerSelectedPath = data.current_dir;
+                exportCurrentDir.innerText = 'Current folder: ' + data.current_dir;
+
+                if (canUseDirectory(exportPickerSelectedPath)) {
+                    exportConfirmBtn.disabled = false;
+                    exportConfirmBtn.style.opacity = "1";
+                    exportConfirmBtn.style.cursor = "pointer";
+                } else {
+                    exportConfirmBtn.disabled = true;
+                    exportConfirmBtn.style.opacity = "0.5";
+                    exportConfirmBtn.style.cursor = "not-allowed";
+                }
+
+                exportFolderList.innerHTML = "";
+                const currentFolderItem = document.createElement('div');
+                currentFolderItem.className = 'folder-item';
+                currentFolderItem.style.border = '1px solid rgba(59, 130, 246, 0.35)';
+                currentFolderItem.style.background = 'rgba(59, 130, 246, 0.08)';
+                currentFolderItem.innerHTML = `📂 Use this folder: ${data.current_dir}`;
+                currentFolderItem.onclick = () => {
+                    exportPickerSelectedPath = data.current_dir;
+                    exportDirectory = data.current_dir;
+                    exportCurrentDir.innerText = `Current folder: ${data.current_dir}`;
+                    exportConfirmBtn.disabled = !canUseDirectory(data.current_dir);
+                    exportConfirmBtn.style.opacity = exportConfirmBtn.disabled ? "0.5" : "1";
+                    exportConfirmBtn.style.cursor = exportConfirmBtn.disabled ? "not-allowed" : "pointer";
+                };
+                exportFolderList.appendChild(currentFolderItem);
+
+                if (!data.entries || data.entries.length === 0) {
+                    exportFolderList.innerHTML = `<div style="padding: 0.85rem; color: var(--text-secondary);">No subfolders here. You can still use the current directory if it is enabled.</div>`;
+                    exportFolderList.prepend(currentFolderItem);
+                    return;
+                }
+
+                data.entries.forEach(entry => {
+                    const div = document.createElement('div');
+                    div.className = 'folder-item';
+                    div.innerHTML = `📁 ${entry.name}`;
+                    div.onclick = () => {
+                        exportDirectory = entry.path;
+                        loadExportDirectory(entry.path);
+                    };
+                    exportFolderList.appendChild(div);
+                });
+            })
+            .catch(err => {
+                exportCurrentDir.innerText = "Unable to load folders.";
+                exportFolderList.innerHTML = `<div style="padding: 0.85rem; color: #fca5a5;">Could not load folder list: ${err.message}</div>`;
+                setQuoteStatus(`Could not open export directory browser: ${err.message}`, 'error');
+            });
+    }
+
+    verifyBtn.addEventListener('click', () => {
+        runVerification(verifyDirectoryInput.value.trim());
     });
 
-    nextBtn.addEventListener('click', () => {
-        currentPage++;
-        loadArtifacts();
+    useManifestSourceBtn.addEventListener('click', () => {
+        verifyDirectoryInput.value = manifestSourcePath || '';
+        runVerification(verifyDirectoryInput.value.trim());
     });
+
+    function toggleArtifactSelection(path, isChecked) {
+        if (isChecked && !isArtifactQuoted(path)) {
+            selectedArtifactPaths.add(path);
+        } else {
+            selectedArtifactPaths.delete(path);
+        }
+        updateSelectionUI();
+    }
+    window.toggleArtifactSelection = toggleArtifactSelection;
+
+    function toggleSelectAllPage(isChecked) {
+        loadedArtifacts.forEach(art => {
+            if (isChecked) {
+                if (!isArtifactQuoted(art.path)) {
+                    selectedArtifactPaths.add(art.path);
+                }
+            } else {
+                selectedArtifactPaths.delete(art.path);
+            }
+        });
+        document.querySelectorAll('.artifact-row-cb').forEach(cb => {
+            if (!cb.disabled) {
+                cb.checked = isChecked;
+            }
+        });
+        updateSelectionUI();
+    }
+    window.toggleSelectAllPage = toggleSelectAllPage;
+
+    function updateSelectionUI() {
+        const count = selectedArtifactPaths.size;
+        const bulkBtn = document.getElementById('bulk-quote-btn');
+        if (bulkBtn) {
+            bulkBtn.textContent = `Quote selected (${count})`;
+            if (count > 0) {
+                bulkBtn.disabled = false;
+                bulkBtn.style.opacity = '1';
+                bulkBtn.style.cursor = 'pointer';
+            } else {
+                bulkBtn.disabled = true;
+                bulkBtn.style.opacity = '0.5';
+                bulkBtn.style.cursor = 'not-allowed';
+            }
+        }
+
+        const selectAllCb = document.getElementById('select-all-page');
+        if (selectAllCb && loadedArtifacts.length > 0) {
+            const selectableArtifacts = loadedArtifacts.filter(art => !isArtifactQuoted(art.path));
+            const allPageSelected = selectableArtifacts.length > 0 && selectableArtifacts.every(art => selectedArtifactPaths.has(art.path));
+            selectAllCb.checked = allPageSelected;
+            selectAllCb.disabled = selectableArtifacts.length === 0;
+        }
+    }
+
+    function triggerBulkQuote() {
+        if (selectedArtifactPaths.size === 0) return;
+
+        if (hasExportDirectory()) {
+            bulkQuoteSelectedArtifacts(Array.from(selectedArtifactPaths), exportDirectory);
+            return;
+        }
+
+        pendingBulkQuote = true;
+        exportPickerModal.style.display = 'block';
+        exportDirectory = normalizeExportDirectory(localStorage.getItem('quote-export-directory') || exportDirectory);
+        loadExportDirectory("/");
+    }
+    window.triggerBulkQuote = triggerBulkQuote;
+
+    async function bulkQuoteSelectedArtifacts(pathsArray, directoryOverride) {
+        const chosenDirectory = (directoryOverride || exportDirectory || "").trim();
+        if (!chosenDirectory) {
+            setQuoteStatus("Please choose an export directory first.", 'error');
+            return;
+        }
+
+        const bulkBtn = document.getElementById('bulk-quote-btn');
+        if (bulkBtn) {
+            bulkBtn.disabled = true;
+            bulkBtn.textContent = "Quoting...";
+        }
+
+        exportDirectory = normalizeExportDirectory(chosenDirectory);
+        localStorage.setItem('quote-export-directory', exportDirectory);
+        setQuoteStatus(`Bulk quoting ${pathsArray.length} artifacts to ${exportDirectory}...`, 'neutral');
+
+        try {
+            const response = await fetch('/api/quote/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    original_paths: pathsArray,
+                    export_directory: exportDirectory
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data.error || 'Bulk quote request failed');
+            }
+
+            const results = data.results || [];
+            results.forEach(res => {
+                quotedExhibits = quotedExhibits.filter(exhibit => exhibit.original_path !== res.original_path);
+                quotedExhibits.push({
+                    original_path: res.original_path,
+                    exhibit_name: res.exhibit_name,
+                    source_sha256: res.source_sha256,
+                    integrity_verified: res.integrity_verified,
+                    copied_path: res.copied_path
+                });
+            });
+
+            persistQuotedExhibits();
+            renderReport();
+            updateQuotedMarkers();
+
+            setQuoteStatus(
+                `${data.total_quoted} files successfully quoted to ${exportDirectory}. Report manifest updated.`,
+                'success'
+            );
+
+            function formatCSVField(val) {
+                const str = String(val === undefined || val === null ? '' : val);
+                if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                    return `"${str.replaceAll('"', '""')}"`;
+                }
+                return str;
+            }
+
+            const csvHeader = "original_path,exhibit_name,source_sha256,copied_path,integrity_verified";
+            const csvRows = results.map(res => [
+                formatCSVField(res.original_path),
+                formatCSVField(res.exhibit_name),
+                formatCSVField(res.source_sha256),
+                formatCSVField(res.copied_path),
+                formatCSVField(res.integrity_verified)
+            ].join(','));
+
+            const clipboardCSV = [csvHeader, ...csvRows].join('\n');
+
+            try {
+                await navigator.clipboard.writeText(clipboardCSV);
+            } catch (clipboardError) {
+                console.warn('Clipboard copy failed:', clipboardError);
+            }
+
+            selectedArtifactPaths.clear();
+            document.querySelectorAll('.artifact-row-cb:checked').forEach(cb => {
+                cb.checked = false;
+            });
+        } catch (err) {
+            setQuoteStatus(`Bulk quote failed: ${err.message}`, 'error');
+            alert(`Bulk quote failed: ${err.message}`);
+        } finally {
+            updateSelectionUI();
+        }
+    }
+
+    function renderPagination(page, totalPages) {
+        const container = document.getElementById('pagination-controls');
+        if (!container) return;
+        container.innerHTML = "";
+
+        function createBtn(label, targetPage, disabled = false, active = false) {
+            const btn = document.createElement('button');
+            btn.className = active ? 'btn' : 'btn btn-secondary';
+            btn.textContent = label;
+            btn.disabled = disabled;
+            btn.style.padding = '0.35rem 0.75rem';
+            btn.style.fontSize = '0.85rem';
+            if (active) {
+                btn.style.background = 'var(--accent-color)';
+                btn.style.color = '#000';
+                btn.style.fontWeight = '700';
+            }
+            btn.onclick = () => {
+                if (!disabled && targetPage !== currentPage) {
+                    currentPage = targetPage;
+                    loadArtifacts();
+                }
+            };
+            return btn;
+        }
+
+        // First page button (⏮)
+        container.appendChild(createBtn('⏮ First', 1, page === 1));
+
+        // Previous page button (◀)
+        container.appendChild(createBtn('◀ Prev', Math.max(1, page - 1), page === 1));
+
+        // Range of page numbers (2 before, current, 2 after)
+        const startPage = Math.max(1, page - 2);
+        const endPage = Math.min(totalPages, page + 2);
+
+        for (let p = startPage; p <= endPage; p++) {
+            container.appendChild(createBtn(String(p), p, false, p === page));
+        }
+
+        // Next page button (▶)
+        container.appendChild(createBtn('Next ▶', Math.min(totalPages, page + 1), page >= totalPages));
+
+        // Last page button (⏭)
+        container.appendChild(createBtn('Last ⏭', totalPages, page >= totalPages));
+    }
+
+    function isArtifactQuoted(path) {
+        if (!path || !quotedExhibits || !quotedExhibits.length) return false;
+        return quotedExhibits.some(ex => ex && ex.original_path === path);
+    }
+
+    function updateQuotedMarkers() {
+        if (!tableBody || !loadedArtifacts || !loadedArtifacts.length) return;
+        const rows = tableBody.children;
+        loadedArtifacts.forEach((art, index) => {
+            const tr = rows[index];
+            if (!tr) return;
+            const cbCell = tr.children[0];
+            const pathCell = tr.children[1];
+            if (!pathCell) return;
+
+            const isQuoted = isArtifactQuoted(art.path);
+            const quotedMarker = isQuoted
+                ? `<span class="quoted-badge" style="background: rgba(16, 185, 129, 0.15); color: var(--success-color); border: 1px solid rgba(16, 185, 129, 0.3); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem; display: inline-flex; align-items: center; gap: 0.25rem;">📌 Quoted</span>`
+                : '';
+
+            pathCell.innerHTML = `📄 ${escapeHtml(art.path)} ${quotedMarker}`;
+
+            if (cbCell) {
+                const cb = cbCell.querySelector('.artifact-row-cb');
+                if (cb) {
+                    cb.disabled = isQuoted;
+                    if (isQuoted) {
+                        cb.checked = false;
+                        cb.style.cursor = 'not-allowed';
+                        cb.style.opacity = '0.5';
+                        selectedArtifactPaths.delete(art.path);
+                    } else {
+                        cb.style.cursor = 'pointer';
+                        cb.style.opacity = '1';
+                    }
+                }
+            }
+        });
+        updateSelectionUI();
+    }
 
     function loadArtifacts() {
         const url = `/api/artifacts?page=${currentPage}&q=${encodeURIComponent(currentQuery)}`;
@@ -198,36 +759,559 @@
                 loadedArtifacts = data.artifacts || [];
 
                 if (loadedArtifacts.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No artifacts found.</td></tr>`;
+                    tableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No artifacts found.</td></tr>`;
                     pageInfo.innerText = "0 results";
-                    nextBtn.disabled = true;
+                    renderPagination(1, 1);
+                    updateSelectionUI();
                     return;
                 }
 
-                loadedArtifacts.forEach(art => {
+                loadedArtifacts.forEach((art) => {
                     const tr = document.createElement('tr');
                     tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+                    const encodedPath = encodeURIComponent(art.path);
+                    const isQuoted = isArtifactQuoted(art.path);
+                    if (isQuoted) {
+                        selectedArtifactPaths.delete(art.path);
+                    }
+                    const isChecked = !isQuoted && selectedArtifactPaths.has(art.path);
+                    const quotedMarker = isQuoted
+                        ? `<span class="quoted-badge" style="background: rgba(16, 185, 129, 0.15); color: var(--success-color); border: 1px solid rgba(16, 185, 129, 0.3); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem; display: inline-flex; align-items: center; gap: 0.25rem;">📌 Quoted</span>`
+                        : '';
 
                     tr.innerHTML = `
-                        <td style="padding: 0.75rem; word-break: break-all; font-size: 0.9rem;">${art.path}</td>
-                        <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--accent-color);">${art.sha256.substring(0, 16)}...</td>
+                        <td style="padding: 0.75rem; text-align: center;">
+                            <input type="checkbox" class="artifact-row-cb" data-path="${encodedPath}" ${isChecked ? 'checked' : ''} ${isQuoted ? 'disabled style="cursor: not-allowed; opacity: 0.5; transform: scale(1.15);"' : 'style="cursor: pointer; opacity: 1; transform: scale(1.15);"'} onchange="toggleArtifactSelection(decodeURIComponent(this.getAttribute('data-path')), this.checked)">
+                        </td>
+                        <td style="padding: 0.75rem; word-break: break-all; font-size: 0.9rem;">
+                            📄 ${escapeHtml(art.path)} ${quotedMarker}
+                        </td>
+                        <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--accent-color);">${escapeHtml(art.sha256.substring(0, 16))}...</td>
                         <td style="padding: 0.75rem;">
-                            <button class="btn btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;" onclick="quoteArtifact('${art.path}')">Quote</button>
+                            <button class="btn btn-secondary quote-btn" data-original-path="${encodedPath}" onclick="quoteSelectedArtifact(decodeURIComponent(this.getAttribute('data-original-path')), this)" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Quote</button>
                         </td>
                     `;
                     tableBody.appendChild(tr);
                 });
 
-                const totalPages = Math.ceil(data.total / data.limit);
+                const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
                 pageInfo.innerText = `Page ${data.page} of ${totalPages} (${data.total} total)`;
-
-                prevBtn.disabled = currentPage === 1;
-                nextBtn.disabled = currentPage >= totalPages;
+                renderPagination(data.page, totalPages);
+                updateSelectionUI();
             });
     }
 
-    function quoteArtifact(path) {
-        alert("Quote action triggered for: " + path + "\n\n(This will be implemented in Issue #4: Automated subset extraction)");
+    async function quoteArtifact(path, button, directoryOverride) {
+        const originalLabel = button ? button.textContent : "Quote";
+        let timeoutId = null;
+        if (button) {
+            button.disabled = true;
+            button.textContent = "Quoting...";
+        }
+        setQuoteStatus(`Quoting ${path}...`, 'neutral');
+        const chosenDirectory = (directoryOverride || exportDirectory || "").trim();
+        if (!chosenDirectory) {
+            setQuoteStatus("Please choose an export directory first.", 'error');
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalLabel;
+            }
+            return;
+        }
+
+        exportDirectory = normalizeExportDirectory(chosenDirectory);
+        localStorage.setItem('quote-export-directory', exportDirectory);
+        setQuoteStatus(`Sending quote request for ${path} to ${exportDirectory}...`, 'neutral');
+
+        try {
+            const controller = new AbortController();
+            timeoutId = setTimeout(() => controller.abort(), 90000);
+
+            const response = await fetch('/api/quote', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    original_path: path,
+                    export_directory: exportDirectory
+                }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            setQuoteStatus(`Backend responded for ${path}. Reading result...`, 'neutral');
+
+            const data = await response.json();
+
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data.error || 'Quote request failed');
+            }
+
+            quotedExhibits = quotedExhibits.filter(exhibit => exhibit.original_path !== data.original_path);
+            quotedExhibits.push({
+                original_path: data.original_path,
+                exhibit_name: data.exhibit_name,
+                source_sha256: data.source_sha256,
+                integrity_verified: data.integrity_verified,
+                copied_path: data.copied_path
+            });
+            persistQuotedExhibits();
+            renderReport();
+            updateQuotedMarkers();
+            setQuoteStatus(
+                `Quote completed: ${data.exhibit_name} was copied to ${data.copied_path}. Report manifest updated at ${data.manifest_path}.`,
+                'success'
+            );
+
+            const clipboardText = [
+                `Original path: ${data.original_path}`,
+                `Exhibit name: ${data.exhibit_name}`,
+                `SHA256: ${data.source_sha256}`,
+                `Copied path: ${data.copied_path}`,
+                `Integrity verified: ${data.integrity_verified}`
+            ].join('\n');
+
+            try {
+                await navigator.clipboard.writeText(clipboardText);
+            } catch (clipboardError) {
+                console.warn('Clipboard copy failed:', clipboardError);
+                setQuoteStatus(
+                    `Quote completed, but clipboard copy was blocked. File: ${data.exhibit_name}. Exported to ${data.copied_path}.`,
+                    'success'
+                );
+            }
+        } catch (err) {
+            const message = err.name === 'AbortError'
+                ? 'Quote request timed out after 90 seconds'
+                : err.message;
+            if (message.includes('export directory is not writable')) {
+                exportDirectory = "";
+                localStorage.removeItem('quote-export-directory');
+            }
+            setQuoteStatus(`Quote failed: ${message}`, 'error');
+            alert(`Quote failed: ${message}`);
+        } finally {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+            }
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalLabel;
+            }
+        }
+    }
+
+
+    function runVerification(directory) {
+        verifyBtn.disabled = true;
+        verifyBtn.innerText = 'Verifying...';
+
+        fetch('/api/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ directory })
+        })
+            .then(async res => {
+                const data = await res.json();
+                if (!res.ok) {
+                    if (data.code === 'directory_required') {
+                        verifyDirectoryInput.focus();
+                    }
+                    throw new Error(data.error || 'Verification failed');
+                }
+
+                document.getElementById('verified-count').innerText = data.verified;
+                document.getElementById('missing-count').innerText = data.missing;
+                document.getElementById('modified-count').innerText = data.modified;
+                document.getElementById('extra-count').innerText = data.extra;
+                renderVerificationResults(data);
+                return data;
+            })
+            .catch(err => {
+                alert(err.message);
+            })
+            .finally(() => {
+                verifyBtn.disabled = false;
+                verifyBtn.innerText = 'Verify Integrity';
+            });
+    }
+
+    function formatBytes(bytes) {
+        if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 bytes';
+        if (bytes === 0) return '0 bytes';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(Math.abs(bytes)) / Math.log(k));
+        const val = (bytes / Math.pow(k, i)).toFixed(2);
+        return `${val} ${sizes[i]} (${bytes.toLocaleString()} bytes)`;
+    }
+
+    function pairTextOperations(ops) {
+        const rows = [];
+        for (let i = 0; i < ops.length; i++) {
+            const op = ops[i];
+            const next = ops[i + 1];
+
+            if (op.type === 'remove' && next && next.type === 'add') {
+                rows.push({
+                    kind: 'modify',
+                    beforeLine: op.before_line,
+                    afterLine: next.after_line,
+                    before: op.before || '',
+                    after: next.after || '',
+                });
+                i++;
+                continue;
+            }
+
+            if (op.type === 'remove') {
+                rows.push({
+                    kind: 'remove',
+                    beforeLine: op.before_line,
+                    afterLine: '',
+                    before: op.before || '',
+                    after: '',
+                });
+                continue;
+            }
+
+            if (op.type === 'add') {
+                rows.push({
+                    kind: 'add',
+                    beforeLine: '',
+                    afterLine: op.after_line,
+                    before: '',
+                    after: op.after || '',
+                });
+            }
+        }
+        return rows;
+    }
+
+    function renderChangeAnalysis(analysis) {
+        if (!analysis) {
+            return '';
+        }
+
+        const parts = [];
+        parts.push(`
+            <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px; padding: 0.9rem;">
+                <div style="font-weight: 700; color: #bfdbfe; margin-bottom: 0.35rem;">Exact change analysis</div>
+                <div style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5;">${escapeHtml(analysis.summary || 'No summary available.')}</div>
+            </div>
+        `);
+
+        if (analysis.kind === 'text' && analysis.text) {
+            const ops = analysis.text.operations || [];
+            const pairedRows = pairTextOperations(ops);
+            const addedCount = pairedRows.filter(row => row.kind === 'add').length;
+            const removedCount = pairedRows.filter(row => row.kind === 'remove').length;
+            const modifiedCount = pairedRows.filter(row => row.kind === 'modify').length;
+
+            const sideBySideRows = pairedRows.slice(0, 40).map(row => {
+                const beforeColor = row.kind === 'remove' ? '#ef4444' : row.kind === 'modify' ? '#f59e0b' : 'rgba(255,255,255,0.22)';
+                const afterColor = row.kind === 'add' ? '#22c55e' : row.kind === 'modify' ? '#22c55e' : 'rgba(255,255,255,0.22)';
+                const beforeBg = row.kind === 'remove' ? 'rgba(239, 68, 68, 0.08)' : row.kind === 'modify' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(255,255,255,0.03)';
+                const afterBg = row.kind === 'add' ? 'rgba(34, 197, 94, 0.08)' : row.kind === 'modify' ? 'rgba(34, 197, 94, 0.08)' : 'rgba(255,255,255,0.03)';
+                const beforeLine = row.beforeLine || '-';
+                const afterLine = row.afterLine || '-';
+                const beforeText = row.before ? escapeHtml(row.before) : '<span style="color: rgba(255,255,255,0.35); font-style: italic;">(removed)</span>';
+                const afterText = row.after ? escapeHtml(row.after) : '<span style="color: rgba(255,255,255,0.35); font-style: italic;">(added)</span>';
+
+                return `
+                    <tr style="vertical-align: top;">
+                        <td style="width: 50%; padding: 0.55rem; background: ${beforeBg}; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                            <div style="display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.35rem; color: var(--text-secondary); font-size: 0.8rem;">
+                                <span style="background: ${beforeColor}; color: #000; padding: 0.12rem 0.45rem; border-radius: 4px; font-weight: 700; text-transform: uppercase;">Before</span>
+                                <span>Line ${beforeLine}</span>
+                            </div>
+                            <code style="display: block; white-space: pre-wrap; word-break: break-word; color: ${row.kind === 'remove' ? '#fecaca' : '#e5e7eb'};">${beforeText}</code>
+                        </td>
+                        <td style="width: 50%; padding: 0.55rem; background: ${afterBg}; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                            <div style="display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.35rem; color: var(--text-secondary); font-size: 0.8rem;">
+                                <span style="background: ${afterColor}; color: #000; padding: 0.12rem 0.45rem; border-radius: 4px; font-weight: 700; text-transform: uppercase;">After</span>
+                                <span>Line ${afterLine}</span>
+                            </div>
+                            <code style="display: block; white-space: pre-wrap; word-break: break-word; color: ${row.kind === 'add' ? '#bbf7d0' : '#e5e7eb'};">${afterText}</code>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            const opRows = ops.slice(0, 40).map(op => {
+                const color = op.type === 'remove' ? '#fca5a5' : '#86efac';
+                const label = op.type === 'remove' ? 'Removed' : 'Added';
+                const lineNo = op.type === 'remove' ? op.before_line : op.after_line;
+                const content = op.type === 'remove' ? op.before : op.after;
+                return `
+                    <tr>
+                        <td style="padding: 0.45rem 0.55rem; color: ${color}; font-weight: 700; text-transform: uppercase;">${label}</td>
+                        <td style="padding: 0.45rem 0.55rem; color: var(--text-secondary);">${lineNo || '-'}</td>
+                        <td style="padding: 0.45rem 0.55rem; font-family: monospace; word-break: break-word; white-space: pre-wrap;">${escapeHtml(content || '')}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            parts.push(`
+                <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 0.85rem;">
+                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">Text diff</div>
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap; color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.65rem;">
+                        <span>Before: <strong style="color: white;">${analysis.text.line_count_before || 0}</strong> lines</span>
+                        <span>After: <strong style="color: white;">${analysis.text.line_count_after || 0}</strong> lines</span>
+                        <span>Operations: <strong style="color: white;">${ops.length}</strong></span>
+                        <span>Added: <strong style="color: white;">${addedCount}</strong></span>
+                        <span>Removed: <strong style="color: white;">${removedCount}</strong></span>
+                        <span>Modified: <strong style="color: white;">${modifiedCount}</strong></span>
+                    </div>
+                    <div style="overflow-x: auto; max-height: 320px; overflow-y: auto; border-top: 1px solid rgba(255,255,255,0.08); margin-bottom: 0.9rem;">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+                                    <th style="padding: 0.5rem; color: var(--text-secondary); width: 50%;">Before</th>
+                                    <th style="padding: 0.5rem; color: var(--text-secondary); width: 50%;">After</th>
+                                </tr>
+                            </thead>
+                            <tbody>${sideBySideRows || `<tr><td colspan="2" style="padding: 0.75rem; color: var(--success-color);">No textual differences found.</td></tr>`}</tbody>
+                        </table>
+                    </div>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.4rem;">Operation log</div>
+                    <div style="overflow-x: auto; max-height: 220px; overflow-y: auto; border-top: 1px solid rgba(255,255,255,0.08);">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+                                    <th style="padding: 0.5rem; color: var(--text-secondary);">Type</th>
+                                    <th style="padding: 0.5rem; color: var(--text-secondary);">Line</th>
+                                    <th style="padding: 0.5rem; color: var(--text-secondary);">Content</th>
+                                </tr>
+                            </thead>
+                            <tbody>${opRows || `<tr><td colspan="3" style="padding: 0.75rem; color: var(--success-color);">No textual differences found.</td></tr>`}</tbody>
+                        </table>
+                    </div>
+                    ${ops.length > 40 ? `<div style="margin-top: 0.6rem; color: var(--text-secondary); font-size: 0.85rem;">Showing first 40 line operations.</div>` : ''}
+                </div>
+            `);
+        } else if (analysis.kind === 'image' && analysis.image) {
+            const img = analysis.image;
+            const notes = (img.notes || []).map(note => `<li>${escapeHtml(note)}</li>`).join('');
+            parts.push(`
+                <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 0.85rem;">
+                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">Image diff</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.65rem; color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.75rem;">
+                        <div>Before: <strong style="color: white;">${img.before_width || 0} x ${img.before_height || 0}</strong></div>
+                        <div>After: <strong style="color: white;">${img.after_width || 0} x ${img.after_height || 0}</strong></div>
+                        <div>Changed pixels: <strong style="color: white;">${img.overlap_changed_pixels || 0}</strong> / ${img.overlap_total_pixels || 0}</div>
+                        <div>Changed percent: <strong style="color: white;">${(img.changed_percent || 0).toFixed(2)}%</strong></div>
+                    </div>
+                    ${img.bounds ? `
+                    <div style="margin-bottom: 0.75rem; color: var(--text-secondary); font-size: 0.9rem;">
+                        Changed region: <strong style="color: white;">x=${img.bounds.min_x}..${img.bounds.max_x}, y=${img.bounds.min_y}..${img.bounds.max_y}</strong>
+                    </div>` : ''}
+                    <div style="color: ${img.suspected_crop ? '#f59e0b' : 'var(--success-color)'}; font-weight: 600; margin-bottom: 0.65rem;">
+                        ${img.suspected_crop ? 'Likely crop or canvas resize.' : 'No strong crop signal detected.'}
+                    </div>
+                    ${notes ? `
+                    <div>
+                        <div style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 0.35rem;">Notes</div>
+                        <ul style="margin: 0; padding-left: 1.2rem; color: var(--text-primary);">${notes}</ul>
+                    </div>` : ''}
+                </div>
+            `);
+        }
+
+        return parts.join('');
+    }
+
+    function openVerificationDetailModal(detail) {
+        const modal = document.getElementById('verification-detail-modal');
+        const badges = document.getElementById('ver-modal-badges');
+        const body = document.getElementById('ver-modal-body');
+
+        const statusColor = detail.status === 'missing' ? '#ef4444' : detail.status === 'modified' ? '#f59e0b' : '#38bdf8';
+        let badgesHtml = `<span style="background: ${statusColor}; color: #000; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 700; font-size: 0.75rem; text-transform: uppercase;">${escapeHtml(detail.status)}</span>`;
+
+        if (detail.is_renamed) {
+            badgesHtml += `<span style="background: rgba(168, 85, 247, 0.25); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 600; font-size: 0.75rem;">🏷️ Renamed</span>`;
+        }
+        if (detail.is_location_changed) {
+            badgesHtml += `<span style="background: rgba(59, 130, 246, 0.25); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 600; font-size: 0.75rem;">📍 Location changed</span>`;
+        }
+
+        badges.innerHTML = badgesHtml;
+
+        const expSize = detail.expected_size_bytes || 0;
+        const actSize = detail.actual_size_bytes || 0;
+        const diff = actSize - expSize;
+
+        let sizeComparisonHtml = '';
+        if (detail.status === 'missing') {
+            sizeComparisonHtml = `
+                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 0.85rem;">
+                    <div style="font-weight: 600; color: #fca5a5; margin-bottom: 0.3rem;">Size comparison (before vs after)</div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">
+                        Before: <strong style="color: white;">${formatBytes(expSize)}</strong> | After: <strong style="color: #ef4444;">0 bytes (file missing)</strong>
+                    </div>
+                </div>
+            `;
+        } else if (detail.status === 'extra') {
+            sizeComparisonHtml = `
+                <div style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 0.85rem;">
+                    <div style="font-weight: 600; color: #7dd3fc; margin-bottom: 0.3rem;">Size comparison (before vs after)</div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">
+                        Before: <strong style="color: white;">0 bytes (not in manifest)</strong> | After: <strong style="color: #38bdf8;">${formatBytes(actSize)}</strong>
+                    </div>
+                </div>
+            `;
+        } else {
+            let diffLabel = '';
+            let diffColor = '';
+            if (diff > 0) {
+                diffLabel = `+${formatBytes(diff)} — content added`;
+                diffColor = '#f59e0b';
+            } else if (diff < 0) {
+                diffLabel = `-${formatBytes(Math.abs(diff))} — content removed`;
+                diffColor = '#ef4444';
+            } else {
+                diffLabel = '0 bytes — size unchanged';
+                diffColor = 'var(--success-color)';
+            }
+
+            sizeComparisonHtml = `
+                <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 0.85rem;">
+                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.4rem;">Size comparison (before vs after)</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.9rem; margin-bottom: 0.4rem;">
+                        <div>Before (manifest): <strong style="color: white;">${formatBytes(expSize)}</strong></div>
+                        <div>After (verification): <strong style="color: white;">${formatBytes(actSize)}</strong></div>
+                    </div>
+                    <div style="font-size: 0.9rem; padding-top: 0.4rem; border-top: 1px dashed rgba(255,255,255,0.1); color: ${diffColor}; font-weight: 600;">
+                        Difference: ${diffLabel}
+                    </div>
+                </div>
+            `;
+        }
+
+        const expectedPath = detail.expected_path || detail.path || '-';
+        const actualPath = detail.actual_path || detail.path || '-';
+        const expectedName = detail.expected_name || (expectedPath !== '-' ? expectedPath.split(/[/\\]/).pop() : '-');
+        const actualName = detail.actual_name || (actualPath !== '-' ? actualPath.split(/[/\\]/).pop() : '-');
+
+        const pathsHtml = `
+            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 0.85rem; display: flex; flex-direction: column; gap: 0.6rem;">
+                <div style="font-weight: 600; color: var(--text-primary);">Path & file name details</div>
+                <div style="font-size: 0.88rem;">
+                    <span style="color: var(--text-secondary); display: inline-block; width: 130px;">Expected path:</span>
+                    <code style="color: var(--accent-color); word-break: break-all;">${escapeHtml(expectedPath)}</code>
+                </div>
+                <div style="font-size: 0.88rem;">
+                    <span style="color: var(--text-secondary); display: inline-block; width: 130px;">Actual path:</span>
+                    <code style="color: var(--accent-color); word-break: break-all;">${escapeHtml(actualPath)}</code>
+                </div>
+                ${detail.is_renamed ? `
+                <div style="font-size: 0.88rem; padding-top: 0.4rem; border-top: 1px dashed rgba(255,255,255,0.1);">
+                    <span style="color: #c084fc; font-weight: 600;">Renaming detail:</span>
+                    File was renamed from <code style="color: #e9d5ff;">${escapeHtml(expectedName)}</code> to <code style="color: #e9d5ff;">${escapeHtml(actualName)}</code>
+                </div>` : ''}
+                ${detail.is_location_changed ? `
+                <div style="font-size: 0.88rem; padding-top: 0.4rem; border-top: 1px dashed rgba(255,255,255,0.1);">
+                    <span style="color: #60a5fa; font-weight: 600;">Location detail:</span>
+                    File location moved from <code style="color: #bfdbfe;">${escapeHtml(expectedPath)}</code> to <code style="color: #bfdbfe;">${escapeHtml(actualPath)}</code>
+                </div>` : ''}
+            </div>
+        `;
+
+        const hashesHtml = `
+            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 0.85rem; display: flex; flex-direction: column; gap: 0.6rem;">
+                <div style="font-weight: 600; color: var(--text-primary);">SHA256 hash comparison</div>
+                <div style="font-size: 0.85rem;">
+                    <div style="color: var(--text-secondary); margin-bottom: 0.2rem;">Expected SHA256 (manifest):</div>
+                    <code style="word-break: break-all; color: var(--accent-color);">${escapeHtml(detail.expected_sha256 || 'N/A')}</code>
+                </div>
+                <div style="font-size: 0.85rem;">
+                    <div style="color: var(--text-secondary); margin-bottom: 0.2rem;">Actual SHA256 (disk verification):</div>
+                    <code style="word-break: break-all; color: ${detail.expected_sha256 && detail.actual_sha256 && detail.expected_sha256 === detail.actual_sha256 ? 'var(--success-color)' : '#ef4444'};">${escapeHtml(detail.actual_sha256 || 'N/A')}</code>
+                </div>
+            </div>
+        `;
+
+        const summaryHtml = detail.change_summary ? `
+            <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 8px; padding: 0.85rem;">
+                <div style="font-weight: 600; color: #e9d5ff; margin-bottom: 0.35rem;">Change summary</div>
+                <div style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5;">${escapeHtml(detail.change_summary)}</div>
+            </div>
+        ` : '';
+
+        body.innerHTML = sizeComparisonHtml + pathsHtml + hashesHtml + summaryHtml + renderChangeAnalysis(detail.change_analysis);
+        modal.style.display = 'block';
+    }
+
+    function closeVerificationDetailModal() {
+        document.getElementById('verification-detail-modal').style.display = 'none';
+    }
+    window.closeVerificationDetailModal = closeVerificationDetailModal;
+
+    function renderVerificationResults(data) {
+        verificationEmpty.style.display = 'none';
+        verificationPanel.style.display = 'block';
+        switchTab('verification');
+        verificationDirectory.innerText = data.directory || '';
+        verificationSummary.innerText = `${data.verified} verified, ${data.missing} missing, ${data.modified} modified, ${data.extra} extra. Compared ${data.total_current} current files against ${data.total_expected} manifest entries.`;
+
+        // Enable integrity report exports in dropdown now that verification has run
+        const reportJsonLink = document.getElementById('export-report-json-link');
+        const reportHtmlLink = document.getElementById('export-report-html-link');
+        if (reportJsonLink) {
+            reportJsonLink.style.opacity = '1';
+            reportJsonLink.style.pointerEvents = 'auto';
+            reportJsonLink.style.cursor = 'pointer';
+            reportJsonLink.style.color = 'var(--text-primary)';
+            reportJsonLink.title = 'Export JSON integrity report';
+            reportJsonLink.onmouseover = function() { this.style.background = 'rgba(255,255,255,0.08)'; };
+            reportJsonLink.onmouseout = function() { this.style.background = 'transparent'; };
+        }
+        if (reportHtmlLink) {
+            reportHtmlLink.style.opacity = '1';
+            reportHtmlLink.style.pointerEvents = 'auto';
+            reportHtmlLink.style.cursor = 'pointer';
+            reportHtmlLink.style.color = 'var(--text-primary)';
+            reportHtmlLink.title = 'Export HTML integrity report';
+            reportHtmlLink.onmouseover = function() { this.style.background = 'rgba(255,255,255,0.08)'; };
+            reportHtmlLink.onmouseout = function() { this.style.background = 'transparent'; };
+        }
+
+        const details = data.details || [];
+        if (details.length === 0) {
+            verificationTableBody.innerHTML = `<tr><td colspan="4" style="padding: 1rem; text-align: center; color: var(--success-color);">All manifest entries match the selected folder.</td></tr>`;
+            return;
+        }
+
+        verificationTableBody.innerHTML = "";
+        details.forEach(detail => {
+            let displayStatus = detail.status;
+            if (detail.status === 'modified') {
+                if (detail.is_renamed && detail.is_location_changed) {
+                    displayStatus = 'renamed & moved';
+                } else if (detail.is_renamed) {
+                    displayStatus = 'renamed';
+                } else if (detail.is_location_changed) {
+                    displayStatus = 'moved';
+                } else {
+                    displayStatus = 'modified';
+                }
+            }
+            const statusColor = detail.status === 'missing' ? '#ef4444' : (detail.status === 'modified' || displayStatus === 'renamed' || displayStatus === 'moved' || displayStatus === 'renamed & moved') ? '#f59e0b' : '#38bdf8';
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+            tr.style.cursor = "pointer";
+            tr.title = "Click line for detailed information";
+            tr.onclick = () => openVerificationDetailModal(detail);
+            tr.innerHTML = `
+                <td style="padding: 0.75rem; font-weight: 700; color: ${statusColor}; text-transform: uppercase;">${escapeHtml(displayStatus)}</td>
+                <td style="padding: 0.75rem; word-break: break-all;">${escapeHtml(detail.path)}</td>
+                <td style="padding: 0.75rem; font-family: monospace; color: var(--text-secondary); word-break: break-all;">${escapeHtml(detail.expected_sha256 || '-')}</td>
+                <td style="padding: 0.75rem; font-family: monospace; color: var(--text-secondary); word-break: break-all;">${escapeHtml(detail.actual_sha256 || '-')}</td>
+            `;
+            verificationTableBody.appendChild(tr);
+        });
     }
 
     function renderReport() {
@@ -244,28 +1328,81 @@
         quotedExhibits.forEach((exhibit, index) => {
             const tr = document.createElement('tr');
             tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
-
-            const prefix = exhibit.sha256.substring(0, 8);
-            const exhibitName = `${prefix}_${exhibit.name}`;
-
             tr.innerHTML = `
-                <td style="padding: 0.75rem; font-weight: 600; color: var(--accent-color); font-size: 0.9rem; word-break: break-all;">${exhibitName}</td>
-                <td style="padding: 0.75rem; font-size: 0.9rem; word-break: break-all;">${exhibit.path}</td>
-                <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--text-secondary); word-break: break-all;">${exhibit.sha256}</td>
+                <td style="padding: 0.75rem; font-weight: 600; color: var(--accent-color); font-size: 0.9rem; word-break: break-all;">${escapeHtml(exhibit.exhibit_name)}</td>
+                <td style="padding: 0.75rem; font-size: 0.9rem; word-break: break-all;">${escapeHtml(exhibit.original_path)}</td>
+                <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; color: var(--text-secondary); word-break: break-all;">${escapeHtml(exhibit.source_sha256)}</td>
+                <td style="padding: 0.75rem; font-size: 0.9rem; color: ${exhibit.integrity_verified ? 'var(--success-color)' : '#ef4444'}; font-weight: 600;">${exhibit.integrity_verified ? 'Verified' : 'Failed'}</td>
                 <td style="padding: 0.75rem;">
-                    <button class="btn" style="padding: 0.25rem 0.75rem; font-size: 0.8rem; background: #ef4444; border: none; border-radius: 4px; color: white; cursor: pointer;" onclick="removeQuote(${index})">Remove</button>
+                    <button class="btn" style="padding: 0.25rem 0.75rem; font-size: 0.8rem; background: #ef4444;" onclick="removeQuote(${index})">Remove</button>
                 </td>
             `;
             reportTableBody.appendChild(tr);
         });
     }
 
-    window.removeQuote = function(index) {
-        quotedExhibits.splice(index, 1);
-        renderReport();
+    window.removeQuote = async function(index) {
+        const exhibit = quotedExhibits[index];
+        if (!exhibit) return;
+
+        try {
+            const response = await fetch('/api/quote/delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    export_directory: exportDirectory,
+                    original_path: exhibit.original_path,
+                    exhibit_name: exhibit.exhibit_name,
+                    copied_path: exhibit.copied_path
+                })
+            });
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data.error || 'Failed to remove exhibit from report manifest');
+            }
+
+            quotedExhibits.splice(index, 1);
+            persistQuotedExhibits();
+            renderReport();
+            updateQuotedMarkers();
+            setQuoteStatus(`Exhibit ${exhibit.exhibit_name || exhibit.original_path} was removed from report manifest and deleted from disk.`, 'success');
+        } catch (err) {
+            console.error('Failed to remove exhibit:', err);
+            alert(`Failed to remove exhibit: ${err.message}`);
+        }
     }
 
     // Initial load
+    hydrateQuotedExhibits();
+    exportDirectory = normalizeExportDirectory(localStorage.getItem('quote-export-directory') || "");
+
+    function escapeHtml(value) {
+        return String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#039;');
+    }
+
+    // Dropdown menu toggle logic
+    const exportDropdownBtn = document.getElementById('export-dropdown-btn');
+    const exportDropdownMenu = document.getElementById('export-dropdown-menu');
+
+    exportDropdownBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isVisible = exportDropdownMenu.style.display === 'block';
+        exportDropdownMenu.style.display = isVisible ? 'none' : 'block';
+    });
+
+    document.addEventListener('click', () => {
+        if (exportDropdownMenu) {
+            exportDropdownMenu.style.display = 'none';
+        }
+    });
+
     loadArtifacts();
     renderReport();
 </script>

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -14,18 +15,26 @@ import (
 	"sync"
 	"time"
 
+	"mdp-cysec/internal/diffx"
+	"mdp-cysec/internal/exporting"
 	"mdp-cysec/internal/hashing"
+	"mdp-cysec/internal/merkle"
 	"mdp-cysec/internal/models"
+	"mdp-cysec/internal/rfc3161"
 )
 
 type Server struct {
-	mux             *http.ServeMux
-	templates       *template.Template
-	rootDir         string
-	
-	clients         map[chan string]bool
-	clientsMu       sync.Mutex
-	currentManifest *models.MasterManifest
+	mux         *http.ServeMux
+	templates   *template.Template
+	rootDir     string
+	evidenceDir string
+	tsa         *rfc3161.Client
+
+	clients          map[chan string]bool
+	clientsMu        sync.Mutex
+	currentManifest  *models.MasterManifest
+	currentRootDir   string
+	lastVerification *VerificationResult
 
 	// Thread-safe state tracking for hashing progress
 	stateMu         sync.Mutex
@@ -36,12 +45,17 @@ type Server struct {
 }
 
 // NewServer initializes and returns a new Server instance. It sets up the router,
-// parses templates from the embedded assets filesystem, and registers the server routes.
-func NewServer(rootDir string) (*Server, error) {
+// parses templates from the embedded assets filesystem, and registers the server
+// routes. tsaURL points to the RFC 3161 timestamping authority; an empty string
+// disables timestamping.
+func NewServer(rootDir, tsaURL string) (*Server, error) {
 	s := &Server{
-		mux:       http.NewServeMux(),
-		rootDir:   rootDir,
-		clients:   make(map[chan string]bool),
+		mux:     http.NewServeMux(),
+		rootDir: rootDir,
+		clients: make(map[chan string]bool),
+	}
+	if tsaURL != "" {
+		s.tsa = rfc3161.NewClient(tsaURL)
 	}
 
 	// Parse templates from embedded FS
@@ -79,6 +93,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/explore", s.handleExplore)
 	s.mux.HandleFunc("/api/artifacts", s.handleArtifacts)
 	s.mux.HandleFunc("/api/import", s.handleImport)
+	s.mux.HandleFunc("/api/quote", s.handleQuote)
+	s.mux.HandleFunc("/api/quote/bulk", s.handleBulkQuote)
+	s.mux.HandleFunc("/api/quote/delete", s.handleQuoteDelete)
+	s.mux.HandleFunc("/api/verify", s.handleVerify)
+	s.mux.HandleFunc("/api/export/manifest", s.handleExportManifest)
+	s.mux.HandleFunc("/api/export/report.json", s.handleExportReportJSON)
+	s.mux.HandleFunc("/api/export/report.html", s.handleExportReportHTML)
 	s.mux.HandleFunc("/dashboard", s.handleDashboard)
 }
 
@@ -95,7 +116,16 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 type StartRequest struct {
-	Directory string `json:"directory"`
+	Directory              string `json:"directory"`
+	CaseID                 string `json:"case_id"`
+	CaseName               string `json:"case_name"`
+	Analyst                string `json:"analyst"`
+	EnableAdvancedAnalysis bool   `json:"enable_advanced_analysis"`
+}
+
+type QuoteRequest struct {
+	OriginalPath    string `json:"original_path"`
+	ExportDirectory string `json:"export_directory"`
 }
 
 // handleStart begins the asynchronous concurrent hashing of the target directory.
@@ -113,10 +143,13 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetDir := req.Directory
+	targetDir := normalizeLocalPath(req.Directory)
 	if targetDir == "" {
-		targetDir = s.rootDir // fallback
+		targetDir = normalizeLocalPath(s.rootDir) // fallback
 	}
+	s.stateMu.Lock()
+	s.evidenceDir = targetDir
+	s.stateMu.Unlock()
 
 	// Update hashing state thread-safely
 	s.stateMu.Lock()
@@ -126,10 +159,19 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	s.hashingTotal = 0
 	s.stateMu.Unlock()
 
-	progressChan := make(chan int, 100)
+	progressChan := make(chan hashing.ProgressUpdate, 100)
+	timestamp := time.Now().Format("20060102_150405")
+	
+	snapshotDir := ""
+	if req.EnableAdvancedAnalysis {
+		snapshotDir = fmt.Sprintf("manifest_%s.snapshots", timestamp)
+		if absSnapshotDir, err := filepath.Abs(snapshotDir); err == nil {
+			snapshotDir = absSnapshotDir
+		}
+	}
 
 	go func() {
-		hasher := hashing.NewHasher(targetDir)
+		hasher := hashing.NewHasher(targetDir, snapshotDir)
 		manifest, err := hasher.GenerateManifest(progressChan)
 		if err != nil {
 			fmt.Printf("Hashing error: %v\n", err)
@@ -139,32 +181,71 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 			s.stateMu.Unlock()
 			return
 		}
-		
-		timestamp := time.Now().Format("20060102_150405")
+		manifest.CaseMetadata.CaseID = strings.TrimSpace(req.CaseID)
+		manifest.CaseMetadata.CaseName = strings.TrimSpace(req.CaseName)
+		manifest.CaseMetadata.Analyst = strings.TrimSpace(req.Analyst)
 		filename := fmt.Sprintf("manifest_%s.json", timestamp)
+		s.sealManifest(manifest, timestamp)
 		manifest.SaveToFile(filename)
 		s.currentManifest = manifest
-		
+		s.currentRootDir = targetDir
+		s.evidenceDir = targetDir
+		s.lastVerification = nil
 		s.stateMu.Lock()
 		s.hashingActive = false
 		s.hashingDone = true
 		s.hashingTotal = manifest.CaseMetadata.TotalArtifacts
 		s.stateMu.Unlock()
-		
-		s.broadcastSSE(fmt.Sprintf(`{"processed": %d, "done": true}`, manifest.CaseMetadata.TotalArtifacts))
+		s.broadcastSSE(fmt.Sprintf(`{"processed": %d, "total": %d, "done": true}`, manifest.CaseMetadata.TotalArtifacts, manifest.CaseMetadata.TotalArtifacts))
 	}()
 
 	go func() {
 		for progress := range progressChan {
 			s.stateMu.Lock()
-			s.hashingProgress = progress
+			s.hashingProgress = progress.Processed
+			s.hashingTotal = progress.Total
 			s.stateMu.Unlock()
-			s.broadcastSSE(fmt.Sprintf(`{"processed": %d, "done": false}`, progress))
+			s.broadcastSSE(fmt.Sprintf(`{"processed": %d, "total": %d, "done": false}`, progress.Processed, progress.Total))
 		}
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
+}
+
+// sealManifest computes the Merkle root over the completed manifest and, when
+// a TSA is configured, obtains an RFC 3161 attestation of that root, saving
+// the token next to the manifest (issue #3). Timestamping is best-effort: the
+// tool is local-first, so a network failure must not prevent the case from
+// being saved.
+func (s *Server) sealManifest(manifest *models.MasterManifest, timestamp string) {
+	if len(manifest.Artifacts) == 0 {
+		return
+	}
+
+	tree, err := merkle.FromManifest(manifest)
+	if err != nil {
+		fmt.Printf("Merkle tree error: %v\n", err)
+		return
+	}
+	manifest.CaseMetadata.CaseRootHash = tree.RootHex()
+
+	if s.tsa == nil {
+		return
+	}
+	token, info, err := s.tsa.Request(tree.Root())
+	if err != nil {
+		fmt.Printf("RFC 3161 timestamping failed (manifest saved without attestation): %v\n", err)
+		return
+	}
+	tokenPath := fmt.Sprintf("manifest_%s.tsr", timestamp)
+	if err := os.WriteFile(tokenPath, token, 0644); err != nil {
+		fmt.Printf("Failed to save timestamp token: %v\n", err)
+		return
+	}
+	manifest.CaseMetadata.RFC3161TokenPath = tokenPath
+	fmt.Printf("Case root hash attested by TSA at %s (serial %s)\n",
+		info.GenTime.UTC().Format(time.RFC3339), info.SerialNumber)
 }
 
 // broadcastSSE sends an SSE message to all connected clients. It utilizes non-blocking
@@ -204,7 +285,7 @@ func (s *Server) handleProgressSSE(w http.ResponseWriter, r *http.Request) {
 	s.stateMu.Unlock()
 
 	if isDone {
-		fmt.Fprintf(w, "data: {\"processed\": %d, \"done\": true}\n\n", total)
+		fmt.Fprintf(w, "data: {\"processed\": %d, \"total\": %d, \"done\": true}\n\n", total, total)
 		flusher.Flush()
 		return
 	}
@@ -224,7 +305,7 @@ func (s *Server) handleProgressSSE(w http.ResponseWriter, r *http.Request) {
 
 	// Send current progress immediately if active
 	if isActive {
-		fmt.Fprintf(w, "data: {\"processed\": %d, \"done\": false}\n\n", progress)
+		fmt.Fprintf(w, "data: {\"processed\": %d, \"total\": %d, \"done\": false}\n\n", progress, total)
 		flusher.Flush()
 	}
 
@@ -282,12 +363,18 @@ func (s *Server) handleExplore(w http.ResponseWriter, r *http.Request) {
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":       err.Error(),
+			"current_dir": dir,
+			"entries":     []FileEntry{},
+		})
 		return
 	}
 
 	var results []FileEntry
-	
+
 	// Add parent directory option
 	parentDir := filepath.Dir(dir)
 	if parentDir != dir {
@@ -310,7 +397,7 @@ func (s *Server) handleExplore(w http.ResponseWriter, r *http.Request) {
 		if !e.IsDir() {
 			continue
 		}
-		
+
 		results = append(results, FileEntry{
 			Name:  e.Name(),
 			Path:  filepath.Join(dir, e.Name()),
@@ -332,7 +419,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := s.templates.ExecuteTemplate(w, "base.html", map[string]interface{}{
-		"Page": "dashboard",
+		"Page":     "dashboard",
 		"Manifest": s.currentManifest,
 	})
 	if err != nil {
@@ -358,10 +445,10 @@ func (s *Server) handleArtifacts(w http.ResponseWriter, r *http.Request) {
 
 	var filtered []models.Artifact
 	for _, art := range s.currentManifest.Artifacts {
-		if query == "" || 
-		   strings.Contains(strings.ToLower(art.Path), query) || 
-		   strings.Contains(strings.ToLower(art.SHA256), query) ||
-		   strings.Contains(strings.ToLower(art.MD5), query) {
+		if query == "" ||
+			strings.Contains(strings.ToLower(art.Path), query) ||
+			strings.Contains(strings.ToLower(art.SHA256), query) ||
+			strings.Contains(strings.ToLower(art.MD5), query) {
 			filtered = append(filtered, art)
 		}
 	}
@@ -425,7 +512,542 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.currentManifest = &manifest
+	s.currentRootDir = ""
+	s.lastVerification = nil
+
+	// Check if the original root directory is still accessible and set it
+	if manifest.CaseMetadata.EvidenceDirectory != "" {
+		if info, err := os.Stat(manifest.CaseMetadata.EvidenceDirectory); err == nil && info.IsDir() {
+			s.stateMu.Lock()
+			s.evidenceDir = manifest.CaseMetadata.EvidenceDirectory
+			s.currentRootDir = manifest.CaseMetadata.EvidenceDirectory
+			s.stateMu.Unlock()
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
+// handleQuote copies a single artifact into a report export directory, prefixes the
+// copied file with the source hash, and updates a report_manifest.json alongside it.
+func (s *Server) handleQuote(w http.ResponseWriter, r *http.Request) {
+	writeJSONError := func(status int, message string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		json.NewEncoder(w).Encode(map[string]string{"error": message})
+	}
+
+	if r.Method != http.MethodPost {
+		writeJSONError(http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	if s.currentManifest == nil {
+		writeJSONError(http.StatusBadRequest, "No manifest loaded")
+		return
+	}
+
+	var req QuoteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.OriginalPath == "" || req.ExportDirectory == "" {
+		writeJSONError(http.StatusBadRequest, "original_path and export_directory are required")
+		return
+	}
+
+	fmt.Printf("Quote request received: original_path=%s export_directory=%s\n", req.OriginalPath, req.ExportDirectory)
+	s.stateMu.Lock()
+	sourceRoot := s.evidenceDir
+	if sourceRoot == "" {
+		sourceRoot = s.rootDir
+	}
+	s.stateMu.Unlock()
+
+	result, err := exporting.QuoteArtifact(sourceRoot, req.OriginalPath, req.ExportDirectory, s.currentManifest)
+	if err != nil {
+		fmt.Printf("Quote request failed: %v\n", err)
+		writeJSONError(http.StatusBadRequest, err.Error())
+		return
+	}
+	fmt.Printf("Quote request completed: exhibit_name=%s copied_path=%s\n", result.ExhibitName, result.CopiedPath)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":             "success",
+		"original_path":      result.OriginalPath,
+		"exhibit_name":       result.ExhibitName,
+		"source_sha256":      result.SourceSHA256,
+		"integrity_verified": result.IntegrityVerified,
+		"copied_path":        result.CopiedPath,
+		"manifest_path":      result.ManifestPath,
+	})
+}
+
+type BulkQuoteRequest struct {
+	OriginalPaths   []string `json:"original_paths"`
+	ExportDirectory string   `json:"export_directory"`
+}
+
+func (s *Server) handleBulkQuote(w http.ResponseWriter, r *http.Request) {
+	writeJSONError := func(status int, message string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		json.NewEncoder(w).Encode(map[string]string{"error": message})
+	}
+
+	if r.Method != http.MethodPost {
+		writeJSONError(http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	if s.currentManifest == nil {
+		writeJSONError(http.StatusBadRequest, "No manifest loaded")
+		return
+	}
+
+	var req BulkQuoteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if len(req.OriginalPaths) == 0 || req.ExportDirectory == "" {
+		writeJSONError(http.StatusBadRequest, "original_paths and export_directory are required")
+		return
+	}
+
+	s.stateMu.Lock()
+	sourceRoot := s.evidenceDir
+	if sourceRoot == "" {
+		sourceRoot = s.rootDir
+	}
+	s.stateMu.Unlock()
+
+	results, err := exporting.QuoteArtifactsBulk(sourceRoot, req.OriginalPaths, req.ExportDirectory, s.currentManifest)
+	if err != nil {
+		writeJSONError(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":           "success",
+		"total_quoted":     len(results),
+		"results":          results,
+		"export_directory": req.ExportDirectory,
+	})
+}
+
+type QuoteDeleteRequest struct {
+	ExportDirectory string `json:"export_directory"`
+	OriginalPath    string `json:"original_path"`
+	ExhibitName     string `json:"exhibit_name"`
+	CopiedPath      string `json:"copied_path"`
+}
+
+func (s *Server) handleQuoteDelete(w http.ResponseWriter, r *http.Request) {
+	writeJSONError := func(status int, message string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		json.NewEncoder(w).Encode(map[string]string{"error": message})
+	}
+
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		writeJSONError(http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req QuoteDeleteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := exporting.DeleteQuotedArtifact(req.ExportDirectory, req.OriginalPath, req.ExhibitName, req.CopiedPath); err != nil {
+		writeJSONError(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
+type VerificationResult struct {
+	Verified      int                  `json:"verified"`
+	Missing       int                  `json:"missing"`
+	Modified      int                  `json:"modified"`
+	Extra         int                  `json:"extra"`
+	TotalExpected int                  `json:"total_expected"`
+	TotalCurrent  int                  `json:"total_current"`
+	Directory     string               `json:"directory"`
+	Details       []VerificationDetail `json:"details"`
+	VerifiedAt    *time.Time           `json:"verified_at,omitempty"`
+}
+
+type VerificationDetail struct {
+	Status            string          `json:"status"`
+	Path              string          `json:"path"`
+	ExpectedPath      string          `json:"expected_path,omitempty"`
+	ActualPath        string          `json:"actual_path,omitempty"`
+	ExpectedName      string          `json:"expected_name,omitempty"`
+	ActualName        string          `json:"actual_name,omitempty"`
+	ExpectedSHA256    string          `json:"expected_sha256,omitempty"`
+	ActualSHA256      string          `json:"actual_sha256,omitempty"`
+	ExpectedSizeBytes int64           `json:"expected_size_bytes"`
+	ActualSizeBytes   int64           `json:"actual_size_bytes"`
+	IsRenamed         bool            `json:"is_renamed"`
+	IsLocationChanged bool            `json:"is_location_changed"`
+	ChangeSummary     string          `json:"change_summary,omitempty"`
+	ChangeAnalysis    *diffx.Analysis `json:"change_analysis,omitempty"`
+}
+
+func (v VerificationDetail) DisplayStatus() string {
+	if v.Status == "modified" {
+		if v.IsRenamed && v.IsLocationChanged {
+			return "renamed & moved"
+		}
+		if v.IsRenamed {
+			return "renamed"
+		}
+		if v.IsLocationChanged {
+			return "moved"
+		}
+		return "modified"
+	}
+	return v.Status
+}
+
+type VerifyRequest struct {
+	Directory string `json:"directory"`
+}
+
+// handleVerify re-hashes the original case directory and compares the result
+// against the loaded manifest.
+func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.currentManifest == nil {
+		http.Error(w, "No manifest loaded", http.StatusBadRequest)
+		return
+	}
+
+	var req VerifyRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+
+	targetDir := normalizeLocalPath(req.Directory)
+	if targetDir == "" {
+		targetDir = normalizeLocalPath(s.currentRootDir)
+	}
+
+	if targetDir == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "This manifest was imported. Enter the local evidence folder path to verify it against this manifest.",
+			"code":  "directory_required",
+		})
+		return
+	}
+
+	if info, err := os.Stat(targetDir); err != nil || !info.IsDir() {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Verification directory does not exist or is not a folder: " + targetDir,
+		})
+		return
+	}
+
+	hasher := hashing.NewHasher(targetDir)
+	freshManifest, err := hasher.GenerateManifest(nil)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	unmatchedExpected := make([]models.Artifact, 0)
+	unmatchedCurrent := make(map[string]models.Artifact)
+	for _, art := range freshManifest.Artifacts {
+		unmatchedCurrent[art.Path] = art
+	}
+
+	result := VerificationResult{
+		TotalExpected: len(s.currentManifest.Artifacts),
+		TotalCurrent:  len(freshManifest.Artifacts),
+		Directory:     targetDir,
+	}
+
+	for _, expected := range s.currentManifest.Artifacts {
+		current, ok := unmatchedCurrent[expected.Path]
+		if ok {
+			if current.SHA256 != expected.SHA256 {
+				currentAbsPath := filepath.Join(targetDir, strings.TrimPrefix(current.Path, "/"))
+				changeSummary := "Exact change analysis unavailable."
+				var changeAnalysis *diffx.Analysis
+				if analysis, err := diffx.AnalyzeChange(expected, currentAbsPath, s.currentManifest.CaseMetadata.SnapshotDirectory); err == nil {
+					changeAnalysis = analysis
+					changeSummary = analysis.Summary
+				} else {
+					changeSummary = err.Error()
+				}
+				result.Modified++
+				result.Details = append(result.Details, VerificationDetail{
+					Status:            "modified",
+					Path:              expected.Path,
+					ExpectedPath:      expected.Path,
+					ActualPath:        current.Path,
+					ExpectedName:      expected.Name,
+					ActualName:        current.Name,
+					ExpectedSHA256:    expected.SHA256,
+					ActualSHA256:      current.SHA256,
+					ExpectedSizeBytes: expected.SizeBytes,
+					ActualSizeBytes:   current.SizeBytes,
+					IsRenamed:         expected.Name != current.Name,
+					IsLocationChanged: expected.Path != current.Path,
+					ChangeSummary:     changeSummary,
+					ChangeAnalysis:    changeAnalysis,
+				})
+			} else {
+				result.Verified++
+			}
+			delete(unmatchedCurrent, expected.Path)
+		} else {
+			unmatchedExpected = append(unmatchedExpected, expected)
+		}
+	}
+
+	currentByHash := make(map[string][]models.Artifact)
+	for _, current := range unmatchedCurrent {
+		currentByHash[current.SHA256] = append(currentByHash[current.SHA256], current)
+	}
+
+	for _, expected := range unmatchedExpected {
+		candidates, ok := currentByHash[expected.SHA256]
+		if ok && len(candidates) > 0 {
+			current := candidates[0]
+			currentByHash[expected.SHA256] = candidates[1:]
+			delete(unmatchedCurrent, current.Path)
+
+			isRenamed := expected.Name != current.Name
+			isLocChanged := expected.Path != current.Path
+
+			result.Modified++
+			result.Details = append(result.Details, VerificationDetail{
+				Status:            "modified",
+				Path:              fmt.Sprintf("%s -> %s", expected.Path, current.Path),
+				ExpectedPath:      expected.Path,
+				ActualPath:        current.Path,
+				ExpectedName:      expected.Name,
+				ActualName:        current.Name,
+				ExpectedSHA256:    expected.SHA256,
+				ActualSHA256:      current.SHA256,
+				ExpectedSizeBytes: expected.SizeBytes,
+				ActualSizeBytes:   current.SizeBytes,
+				IsRenamed:         isRenamed,
+				IsLocationChanged: isLocChanged,
+				ChangeSummary:     "Content hashes match; file was moved or renamed without content changes.",
+			})
+		} else {
+			result.Missing++
+			result.Details = append(result.Details, VerificationDetail{
+				Status:            "missing",
+				Path:              expected.Path,
+				ExpectedPath:      expected.Path,
+				ExpectedName:      expected.Name,
+				ExpectedSHA256:    expected.SHA256,
+				ExpectedSizeBytes: expected.SizeBytes,
+				ActualSizeBytes:   0,
+				ChangeSummary:     "File is missing from the verification directory.",
+			})
+		}
+	}
+
+	for _, current := range unmatchedCurrent {
+		result.Extra++
+		result.Details = append(result.Details, VerificationDetail{
+			Status:            "extra",
+			Path:              current.Path,
+			ActualPath:        current.Path,
+			ActualName:        current.Name,
+			ActualSHA256:      current.SHA256,
+			ExpectedSizeBytes: 0,
+			ActualSizeBytes:   current.SizeBytes,
+			ChangeSummary:     "File exists on disk but was not present in the manifest.",
+		})
+	}
+
+	now := time.Now().UTC()
+	result.VerifiedAt = &now
+	s.lastVerification = &result
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func normalizeLocalPath(path string) string {
+	path = strings.TrimSpace(path)
+	path = strings.Trim(path, "\"'")
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+
+	// Users often paste JSON-escaped Windows paths such as
+	// "D:\Evidence\Case001" into the verification field.
+	if runtime.GOOS == "windows" {
+		path = strings.ReplaceAll(path, `\`, `\`)
+	}
+
+	return filepath.Clean(path)
+}
+
+func (s *Server) handleExportManifest(w http.ResponseWriter, r *http.Request) {
+	if s.currentManifest == nil {
+		http.Error(w, "No manifest loaded", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", `attachment; filename="master_manifest.json"`)
+	json.NewEncoder(w).Encode(s.currentManifest)
+}
+
+type IntegrityReport struct {
+	GeneratedAt   time.Time              `json:"generated_at"`
+	Manifest      *models.MasterManifest `json:"manifest"`
+	Verification  *VerificationResult    `json:"verification,omitempty"`
+	LoadedRootDir string                 `json:"loaded_root_dir,omitempty"`
+}
+
+func (s *Server) buildReport() (*IntegrityReport, error) {
+	if s.currentManifest == nil {
+		return nil, fmt.Errorf("no manifest loaded")
+	}
+	if s.lastVerification == nil {
+		return nil, fmt.Errorf("integrity verification has not been performed yet. Please run verification first")
+	}
+	return &IntegrityReport{
+		GeneratedAt:   time.Now().UTC(),
+		Manifest:      s.currentManifest,
+		Verification:  s.lastVerification,
+		LoadedRootDir: s.currentRootDir,
+	}, nil
+}
+
+func (s *Server) handleExportReportJSON(w http.ResponseWriter, r *http.Request) {
+	report, err := s.buildReport()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", `attachment; filename="integrity_report.json"`)
+	json.NewEncoder(w).Encode(report)
+}
+
+func (s *Server) handleExportReportHTML(w http.ResponseWriter, r *http.Request) {
+	report, err := s.buildReport()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	html, err := renderIntegrityReportHTML(report)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="integrity_report.html"`)
+	w.Write(html)
+}
+
+func renderIntegrityReportHTML(report *IntegrityReport) ([]byte, error) {
+	const reportTemplate = `<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>Integrity Report</title>
+	<style>
+		body { font-family: Arial, sans-serif; margin: 2rem; color: #111827; }
+		h1, h2 { color: #0f172a; }
+		.meta, table { width: 100%; border-collapse: collapse; margin: 1rem 0 2rem; }
+		td, th { border: 1px solid #d1d5db; padding: 0.5rem; text-align: left; vertical-align: top; }
+		th { background: #f3f4f6; }
+		code { font-family: Consolas, monospace; word-break: break-all; }
+		.ok { color: #047857; font-weight: 700; }
+		.warn { color: #b45309; font-weight: 700; }
+		.bad { color: #b91c1c; font-weight: 700; }
+	</style>
+</head>
+<body>
+	<h1>Evidence Integrity Report</h1>
+	<table class="meta">
+		<tr><th>Generated at</th><td>{{.GeneratedAt}}</td></tr>
+		<tr><th>Manifest version</th><td>{{.Manifest.CaseMetadata.ManifestVersion}}</td></tr>
+		<tr><th>Evidence directory</th><td><code>{{.Manifest.CaseMetadata.EvidenceDirectory}}</code></td></tr>
+		<tr><th>Total artifacts</th><td>{{.Manifest.CaseMetadata.TotalArtifacts}}</td></tr>
+		<tr><th>Total bytes</th><td>{{.Manifest.CaseMetadata.TotalBytes}}</td></tr>
+		<tr><th>Merkle root</th><td><code>{{.Manifest.CaseMetadata.CaseRootHash}}</code></td></tr>
+	</table>
+
+	{{if .Verification}}
+	<h2>Verification Summary</h2>
+	<table>
+		<tr><th>Verified at</th><td>{{.Verification.VerifiedAt}}</td></tr>
+		<tr><th>Compared directory</th><td><code>{{.Verification.Directory}}</code></td></tr>
+		<tr><th>Verified</th><td class="ok">{{.Verification.Verified}}</td></tr>
+		<tr><th>Missing</th><td class="bad">{{.Verification.Missing}}</td></tr>
+		<tr><th>Modified</th><td class="warn">{{.Verification.Modified}}</td></tr>
+		<tr><th>Extra</th><td>{{.Verification.Extra}}</td></tr>
+	</table>
+
+	<h2>Verification Details</h2>
+	<table>
+		<thead><tr><th>Status</th><th>Path</th><th>Expected SHA256</th><th>Actual SHA256</th></tr></thead>
+		<tbody>
+		{{if .Verification.Details}}
+			{{range .Verification.Details}}
+			<tr><td>{{.DisplayStatus}}</td><td><code>{{.Path}}</code></td><td><code>{{.ExpectedSHA256}}</code></td><td><code>{{.ActualSHA256}}</code></td></tr>
+			{{end}}
+		{{else}}
+			<tr><td colspan="4" class="ok">All manifest entries match the selected folder.</td></tr>
+		{{end}}
+		</tbody>
+	</table>
+	{{else}}
+	<p>No verification has been run during this session.</p>
+	{{end}}
+
+	<h2>Manifest Artifacts</h2>
+	<table>
+		<thead><tr><th>Path</th><th>Size</th><th>SHA256</th></tr></thead>
+		<tbody>
+			{{range .Manifest.Artifacts}}
+			<tr><td><code>{{.Path}}</code></td><td>{{.SizeBytes}}</td><td><code>{{.SHA256}}</code></td></tr>
+			{{end}}
+		</tbody>
+	</table>
+</body>
+</html>`
+
+	tmpl, err := template.New("report").Parse(reportTemplate)
+	if err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, report); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
