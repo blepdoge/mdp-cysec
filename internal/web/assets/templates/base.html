@@ -1,27 +1,78 @@
+{{define "content"}}
+    {{if eq .Page "dashboard"}}
+        {{template "dashboard_content" .}}
+    {{else}}
+        {{template "index_content" .}}
+    {{end}}
+{{end}}
+{{define "base"}}
 <!doctype html>
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>mdp-cysec | Evidence integrity</title>
+        <title>mdp-cysec | {{if eq .Page "dashboard"}}Case dashboard{{else}}Case intake{{end}}</title>
         <link rel="stylesheet" href="/static/style.css" />
-        <link
-            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
-            rel="stylesheet"
-        />
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     </head>
     <body>
-        <div class="container">
-            <header class="header">
-            <h1>Evidence integrity manager</h1>
-            <p>Secure, cryptographic verification of forensic exhibits</p>
+        <!-- Unified Top Navigation Banner -->
+        <header class="top-nav">
+            <a href="/" class="brand-badge">
+                <div class="brand-logo">🛡️</div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <div class="brand-title">mdp-cysec</div>
+                    <span style="color: var(--border-medium, #cbd5e1); font-weight: 300; font-size: 1.1rem; margin: 0 0.1rem;">|</span>
+                    <span style="font-weight: 600; font-size: 0.95rem; color: var(--text-secondary, #475569);">
+                        {{if eq .Page "dashboard"}}Case dashboard{{else}}Case intake{{end}}
+                    </span>
+                </div>
+                <span class="brand-tag">Evidence integrity</span>
+            </a>
+
+            <div class="nav-links" style="display: flex; gap: 0.75rem; align-items: center; position: relative;">
+                {{if eq .Page "dashboard"}}
+                    <!-- Export Dropdown -->
+                    <div class="dropdown" id="export-dropdown">
+                        <button class="btn btn-secondary btn-sm" id="export-dropdown-btn" onclick="toggleExportDropdown(event)" style="display: flex; align-items: center; gap: 0.4rem;">
+                            <span>📤</span>
+                            <span>Export case artifacts</span>
+                            <span style="font-size: 0.7rem; color: var(--text-muted);">▼</span>
+                        </button>
+                        <div class="dropdown-menu" id="export-dropdown-menu">
+                            <a href="/api/export/manifest" class="dropdown-item" id="export-manifest-link">
+                                <span>📋</span>
+                                <span>Master manifest (JSON)</span>
+                            </a>
+                            <a href="/api/export/report.html" class="dropdown-item" id="export-report-html-link" title="Run verification first to export integrity report" style="opacity: 0.45; pointer-events: none; cursor: not-allowed;">
+                                <span>📄</span>
+                                <span>Forensic integrity report (HTML)</span>
+                            </a>
+                            <a href="/api/export/report.json" class="dropdown-item" id="export-report-json-link" title="Run verification first to export integrity report" style="opacity: 0.45; pointer-events: none; cursor: not-allowed;">
+                                <span>📊</span>
+                                <span>Integrity analysis (JSON)</span>
+                            </a>
+                            <div class="dropdown-divider"></div>
+                            <a href="#" class="dropdown-item" id="export-copy-csv-link" onclick="copyQuotedExhibitsCSV(event)">
+                                <span>📑</span>
+                                <span>Copy quoted exhibits (CSV)</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <a href="/" class="btn btn-secondary btn-sm">
+                        <span>⟵</span> Case intake
+                    </a>
+                {{end}}
+            </div>
         </header>
 
-        {{if eq .Page "dashboard"}}
-            {{template "dashboard_content" .}}
-        {{else}}
-            {{template "index_content" .}}
-        {{end}}
-    </div>
-</body>
+        <main class="app-container">
+            {{template "content" .}}
+        </main>
+    </body>
 </html>
+{{end}}
+{{template "base" .}}

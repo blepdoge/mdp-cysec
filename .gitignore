@@ -3,3 +3,4 @@ master_manifest.json
 manifest_*.json
 manifest_*.tsr
 /manifest*
+/ui_preview*
